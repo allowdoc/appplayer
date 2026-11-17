@@ -50,6 +50,23 @@ public class InjectAnnotations {
                         } catch (Throwable t) {
                             System.err.println("[-] Error instrumenting NetworkManager: " + t.getMessage());
                         }
+                    } else if ("okhttp3/OkHttpClient$Builder".equals(className)) {
+                        // Bug 2 Fix: intercept OkHttpClient.Builder.build() to install
+                        // our diagnostic EventListener before the client is constructed.
+                        try (InputStream is = jar.getInputStream(entry)) {
+                            byte[] classBytes = is.readAllBytes();
+                            byte[] patchedBytes = patchOkHttpClientBuilder(classBytes);
+
+                            JarEntry newEntry = new JarEntry(name);
+                            newEntry.setTime(entry.getTime());
+                            jos.putNextEntry(newEntry);
+                            jos.write(patchedBytes);
+                            jos.closeEntry();
+                            patchedCount++;
+                            continue;
+                        } catch (Throwable t) {
+                            System.err.println("[-] Error patching OkHttpClient$Builder: " + t.getMessage());
+                        }
                     } else if (cam != null) {
                         try (InputStream is = jar.getInputStream(entry)) {
                             byte[] classBytes = is.readAllBytes();
@@ -303,5 +320,52 @@ public class InjectAnnotations {
         } else {
             av.visit(name, val);
         }
+    }
+
+    /**
+     * Bug 2 Fix: Patch okhttp3/OkHttpClient$Builder so that build() calls
+     * NetworkInstrumenter.installEventListenerFactory(this) before constructing
+     * the OkHttpClient. This installs a diagnostic EventListener that logs the
+     * real IOException (SSLHandshakeException, UnknownHostException, etc.)
+     * before the app swallows it in a generic error mapper.
+     *
+     * This is 100% generic — it patches the OkHttp library class itself, not
+     * any app-specific code, so it works for any app using okhttp3.
+     */
+    private static byte[] patchOkHttpClientBuilder(byte[] classBytes) {
+        ClassReader cr = new ClassReader(classBytes);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS) {
+            @Override
+            protected String getCommonSuperClass(String type1, String type2) {
+                try { return super.getCommonSuperClass(type1, type2); }
+                catch (Throwable t) { return "java/lang/Object"; }
+            }
+        };
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                // Intercept the build() method: ()Lokhttp3/OkHttpClient;
+                if ("build".equals(name) && "()Lokhttp3/OkHttpClient;".equals(desc)) {
+                    return new MethodVisitor(Opcodes.ASM9, mv) {
+                        @Override
+                        public void visitCode() {
+                            super.visitCode();
+                            // NetworkInstrumenter.installEventListenerFactory(this)
+                            mv.visitVarInsn(Opcodes.ALOAD, 0);
+                            mv.visitMethodInsn(
+                                    Opcodes.INVOKESTATIC,
+                                    "org/headless/runner/core/NetworkInstrumenter",
+                                    "installEventListenerFactory",
+                                    "(Ljava/lang/Object;)V",
+                                    false);
+                        }
+                    };
+                }
+                return mv;
+            }
+        };
+        cr.accept(cv, 0);
+        return cw.toByteArray();
     }
 }

@@ -473,6 +473,14 @@ public class AppLauncher {
                             Thread.sleep(100);
                             Looper.getMainLooper().getQueue().drainPendingMessages();
                         }
+                        // Force ViewPager children to populate (no drawing pass in headless mode)
+                        System.out.println("[*] [AppLauncher] Forcing ViewPager populate() on settled activity...");
+                        org.headless.runner.ui.ViewPagerPopulator.populateAll(topAct);
+                        // Drain once more after populate() may have committed fragment transactions
+                        for (int settle = 0; settle < 5; settle++) {
+                            Thread.sleep(100);
+                            Looper.getMainLooper().getQueue().drainPendingMessages();
+                        }
                         System.out.println("[*] Dumping settled UI hierarchy for " + topAct.getClass().getSimpleName() + "...");
                         org.headless.runner.ui.HeadlessUiTree.dump(topAct);
                         File nextScreenFile = new File(context.getFilesDir().getParentFile(), "screen_home.png");

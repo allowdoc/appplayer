@@ -307,6 +307,16 @@ public class ActivityStack {
                 } catch (Throwable ignored) {}
             }
 
+            // 3. Force ViewPager populate() — no drawing pass in headless mode means
+            //    onMeasure/onLayout never fires, so pager children stay at zero.
+            //    ViewPagerPopulator is generic: walks the full view tree and calls
+            //    populate() via reflection on every ViewPager subclass it finds.
+            try {
+                org.headless.runner.ui.ViewPagerPopulator.populateAll(top);
+            } catch (Throwable vpe) {
+                System.err.println("[-] [ViewPagerPopulator] Error: " + vpe.getMessage());
+            }
+
             if (mBaseContext != null) {
                 java.io.File storageDir = mBaseContext.getFilesDir().getParentFile();
                 java.io.File screenFile = new java.io.File(storageDir, "screen.png");

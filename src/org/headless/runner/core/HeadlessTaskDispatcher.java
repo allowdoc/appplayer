@@ -90,6 +90,48 @@ public class HeadlessTaskDispatcher {
         return mExecutedTaskCount.get();
     }
 
+    /**
+     * Generic helper: Android's contract is that every Service/BroadcastReceiver
+     * lifecycle callback (onCreate, onStartCommand, onBind, onReceive, onDestroy,
+     * onUnbind) runs on the app's main thread. mWorkerPool threads are fine for
+     * I/O-bound prep work, but the actual callback into app code must always be
+     * posted onto the main Looper, or any framework/SDK code inside it that checks
+     * "am I on the main thread?" throws. This is the single choke point every
+     * lifecycle dispatch below routes through, instead of each call site deciding
+     * for itself (which is how onStartJob got fixed previously but onExecuted and
+     * others kept resurfacing the same bug).
+     */
+    private void runOnMainThread(Runnable r) {
+        new Handler(Looper.getMainLooper()).post(r);
+    }
+
+    /**
+     * Same contract as runOnMainThread, but blocks the calling (worker) thread
+     * until the callback has actually run on the main Looper. Needed wherever a
+     * caller immediately needs the lifecycle callback's side effects (e.g. the
+     * Service instance must be fully onCreate()'d before callers can use it) and
+     * can't simply fire-and-forget.
+     */
+    private void runOnMainThreadAndWait(Runnable r) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            r.run();
+            return;
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        runOnMainThread(() -> {
+            try {
+                r.run();
+            } finally {
+                latch.countDown();
+            }
+        });
+        try {
+            latch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     // =========================================================================
     // 1. Service Lifecycle Management (startService, bindService, stopService)
     // =========================================================================
@@ -113,16 +155,17 @@ public class HeadlessTaskDispatcher {
         final int startId = mStartIdGen.incrementAndGet();
 
         mWorkerPool.submit(() -> {
-            try {
-                Service s = getOrCreateService(context, finalClassName);
-                if (s != null) {
+            Service s = getOrCreateService(context, finalClassName);
+            if (s == null) return;
+            runOnMainThread(() -> {
+                try {
                     System.out.println("[+] [HeadlessTask] Service.onStartCommand: " + finalClassName + " (startId=" + startId + ")");
                     s.onStartCommand(intent, 0, startId);
                     mExecutedTaskCount.incrementAndGet();
+                } catch (Throwable t) {
+                    System.err.println("[-] Error in Service.onStartCommand (" + finalClassName + "): " + t.getMessage());
                 }
-            } catch (Throwable t) {
-                System.err.println("[-] Error in Service.onStartCommand (" + finalClassName + "): " + t.getMessage());
-            }
+            });
         });
 
         return new ComponentName(context.getPackageName(), className);
@@ -155,8 +198,7 @@ public class HeadlessTaskDispatcher {
                     mBoundServices.put(conn, new BoundServiceRecord(null, intent, finalComp));
                     mExecutedTaskCount.incrementAndGet();
 
-                    Handler mainHandler = new Handler(Looper.getMainLooper());
-                    mainHandler.post(() -> {
+                    runOnMainThread(() -> {
                         try {
                             conn.onServiceConnected(finalComp, broker);
                             System.out.println("[+] [HeadlessTask] GmsBroker connected successfully to " + finalComp.getClassName());
@@ -179,26 +221,23 @@ public class HeadlessTaskDispatcher {
         final ComponentName finalComp = comp != null ? comp : new ComponentName(context.getPackageName(), className);
 
         mWorkerPool.submit(() -> {
-            try {
-                Service s = getOrCreateService(context, finalClassName);
-                if (s != null) {
+            Service s = getOrCreateService(context, finalClassName);
+            if (s == null) return;
+            runOnMainThread(() -> {
+                try {
                     IBinder binder = s.onBind(intent);
                     mBoundServices.put(conn, new BoundServiceRecord(s, intent, finalComp));
                     mExecutedTaskCount.incrementAndGet();
-
-                    Handler mainHandler = new Handler(Looper.getMainLooper());
-                    mainHandler.post(() -> {
-                        try {
-                            conn.onServiceConnected(finalComp, binder);
-                            System.out.println("[+] [HeadlessTask] Service connected: " + finalClassName);
-                        } catch (Throwable t) {
-                            System.err.println("[-] Error in onServiceConnected: " + t);
-                        }
-                    });
+                    try {
+                        conn.onServiceConnected(finalComp, binder);
+                        System.out.println("[+] [HeadlessTask] Service connected: " + finalClassName);
+                    } catch (Throwable t) {
+                        System.err.println("[-] Error in onServiceConnected: " + t);
+                    }
+                } catch (Throwable t) {
+                    System.err.println("[-] Error binding Service " + finalClassName + ": " + t.getMessage());
                 }
-            } catch (Throwable t) {
-                System.err.println("[-] Error binding Service " + finalClassName + ": " + t.getMessage());
-            }
+            });
         });
         return true;
     }
@@ -211,11 +250,13 @@ public class HeadlessTaskDispatcher {
 
         Service s = mActiveServices.remove(className);
         if (s != null) {
-            try {
-                s.onDestroy();
-                System.out.println("[+] [HeadlessTask] Service destroyed: " + className);
-                return true;
-            } catch (Throwable ignored) {}
+            runOnMainThreadAndWait(() -> {
+                try {
+                    s.onDestroy();
+                    System.out.println("[+] [HeadlessTask] Service destroyed: " + className);
+                } catch (Throwable ignored) {}
+            });
+            return true;
         }
         return false;
     }
@@ -224,13 +265,15 @@ public class HeadlessTaskDispatcher {
         if (conn == null) return;
         BoundServiceRecord record = mBoundServices.remove(conn);
         if (record != null) {
-            try {
-                if (record.service != null) {
-                    record.service.onUnbind(record.intent);
-                }
-                conn.onServiceDisconnected(record.component);
-                System.out.println("[+] [HeadlessTask] Service disconnected: " + record.component.getClassName());
-            } catch (Throwable ignored) {}
+            runOnMainThreadAndWait(() -> {
+                try {
+                    if (record.service != null) {
+                        record.service.onUnbind(record.intent);
+                    }
+                    conn.onServiceDisconnected(record.component);
+                    System.out.println("[+] [HeadlessTask] Service disconnected: " + record.component.getClassName());
+                } catch (Throwable ignored) {}
+            });
         }
     }
 
@@ -257,7 +300,8 @@ public class HeadlessTaskDispatcher {
                 attachMethod.setAccessible(true);
                 attachMethod.invoke(s, context, at, className, new Binder(className), app, null);
 
-                s.onCreate();
+                Service finalS = s;
+                runOnMainThreadAndWait(finalS::onCreate);
 
                 // Ensure JobServiceEngine mHandler is bound to Looper.getMainLooper()
                 if (s instanceof JobService) {
@@ -325,7 +369,7 @@ public class HeadlessTaskDispatcher {
                 // Instantiate JobParameters via reflection
                 JobParameters params = createJobParameters(jobInfo, callback.asBinder());
 
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                runOnMainThread(() -> {
                     try {
                         Service baseSvc = getOrCreateService(context, className);
                         if (!(baseSvc instanceof JobService)) {
@@ -417,7 +461,7 @@ public class HeadlessTaskDispatcher {
             IntentFilter filter = entry.getValue();
             if (filter.hasAction(action)) {
                 BroadcastReceiver r = entry.getKey();
-                mWorkerPool.submit(() -> {
+                runOnMainThread(() -> {
                     try {
                         r.onReceive(context, intent);
                         mExecutedTaskCount.incrementAndGet();

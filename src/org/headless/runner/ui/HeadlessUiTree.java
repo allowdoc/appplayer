@@ -25,12 +25,14 @@ public class HeadlessUiTree {
         if (decor != null) {
             try {
                 org.headless.runner.core.ActivityStack.attachWindowIfNeeded(activity);
+                ViewPagerPopulator.populateAll(activity);
                 int w = decor.getWidth() > 0 ? decor.getWidth() : 1080;
                 int h = decor.getHeight() > 0 ? decor.getHeight() : 1920;
                 int wSpec = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY);
                 int hSpec = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY);
                 decor.measure(wSpec, hSpec);
                 decor.layout(0, 0, w, h);
+                layoutDescendants(decor, w, h);
             } catch (Throwable ignored) {}
         }
         StringBuilder sb = new StringBuilder();
@@ -235,12 +237,14 @@ public class HeadlessUiTree {
         }
         View decor = activity.getWindow().getDecorView();
         try {
-            if (decor.getWidth() == 0 || decor.getHeight() == 0) {
-                int wSpec = View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY);
-                int hSpec = View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY);
-                decor.measure(wSpec, hSpec);
-                decor.layout(0, 0, 1080, 1920);
-            }
+            ViewPagerPopulator.populateAll(activity);
+            int w = decor.getWidth() > 0 ? decor.getWidth() : 1080;
+            int h = decor.getHeight() > 0 ? decor.getHeight() : 1920;
+            int wSpec = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY);
+            int hSpec = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY);
+            decor.measure(wSpec, hSpec);
+            decor.layout(0, 0, w, h);
+            layoutDescendants(decor, w, h);
         } catch (Throwable ignored) {}
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
@@ -324,6 +328,29 @@ public class HeadlessUiTree {
             sb.append(",\n").append(childPad).append("\"children\": []");
         }
         sb.append("\n").append(pad).append("}");
+    }
+
+    private static void layoutDescendants(View view, int pw, int ph) {
+        if (!(view instanceof ViewGroup)) return;
+        ViewGroup vg = (ViewGroup) view;
+        int count = vg.getChildCount();
+        for (int i = 0; i < count; i++) {
+            View child = vg.getChildAt(i);
+            if (child == null || child.getVisibility() != View.VISIBLE) continue;
+            if (child.getWidth() <= 0 || child.getHeight() <= 0) {
+                try {
+                    int cwSpec = View.MeasureSpec.makeMeasureSpec(pw, View.MeasureSpec.AT_MOST);
+                    int chSpec = View.MeasureSpec.makeMeasureSpec(ph, View.MeasureSpec.AT_MOST);
+                    child.measure(cwSpec, chSpec);
+                    int mw = child.getMeasuredWidth() > 0 ? child.getMeasuredWidth() : pw;
+                    int mh = child.getMeasuredHeight() > 0 ? child.getMeasuredHeight() : ph;
+                    child.layout(child.getLeft(), child.getTop(), child.getLeft() + mw, child.getTop() + mh);
+                } catch (Throwable ignored) {}
+            }
+            int cw = child.getWidth() > 0 ? child.getWidth() : pw;
+            int ch = child.getHeight() > 0 ? child.getHeight() : ph;
+            layoutDescendants(child, cw, ch);
+        }
     }
 
     private static String escapeJson(String s) {

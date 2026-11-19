@@ -90,10 +90,12 @@ public class HeadlessScreenCapture {
             // Trigger universal window attach and measure & layout pass on genuine Android View hierarchy
             try {
                 org.headless.runner.core.ActivityStack.attachWindowIfNeeded(activity);
+                ViewPagerPopulator.populateAll(activity);
                 int wSpec = View.MeasureSpec.makeMeasureSpec(DEFAULT_WIDTH, View.MeasureSpec.EXACTLY);
                 int hSpec = View.MeasureSpec.makeMeasureSpec(DEFAULT_HEIGHT, View.MeasureSpec.EXACTLY);
                 decor.measure(wSpec, hSpec);
                 decor.layout(0, 0, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+                layoutDescendants(decor, DEFAULT_WIDTH, DEFAULT_HEIGHT);
             } catch (Throwable ignored) {}
         }
 
@@ -150,6 +152,29 @@ public class HeadlessScreenCapture {
         return image;
     }
 
+    private static void layoutDescendants(View view, int pw, int ph) {
+        if (!(view instanceof ViewGroup)) return;
+        ViewGroup vg = (ViewGroup) view;
+        int count = vg.getChildCount();
+        for (int i = 0; i < count; i++) {
+            View child = vg.getChildAt(i);
+            if (child == null || child.getVisibility() != View.VISIBLE) continue;
+            if (child.getWidth() <= 0 || child.getHeight() <= 0) {
+                try {
+                    int cwSpec = View.MeasureSpec.makeMeasureSpec(pw, View.MeasureSpec.AT_MOST);
+                    int chSpec = View.MeasureSpec.makeMeasureSpec(ph, View.MeasureSpec.AT_MOST);
+                    child.measure(cwSpec, chSpec);
+                    int mw = child.getMeasuredWidth() > 0 ? child.getMeasuredWidth() : pw;
+                    int mh = child.getMeasuredHeight() > 0 ? child.getMeasuredHeight() : ph;
+                    child.layout(child.getLeft(), child.getTop(), child.getLeft() + mw, child.getTop() + mh);
+                } catch (Throwable ignored) {}
+            }
+            int cw = child.getWidth() > 0 ? child.getWidth() : pw;
+            int ch = child.getHeight() > 0 ? child.getHeight() : ph;
+            layoutDescendants(child, cw, ch);
+        }
+    }
+
     private static void renderViewSpatial(View view, int parentX, int parentY, Graphics2D g2,
                                          List<SpatialHitTarget> hitTargets, List<InteractiveNode> nodes,
                                          int depth, Activity activity) {
@@ -159,6 +184,20 @@ public class HeadlessScreenCapture {
         int y = parentY + view.getTop();
         int w = view.getWidth();
         int h = view.getHeight();
+
+        if (w <= 0 || h <= 0) {
+            try {
+                int pw = (DEFAULT_WIDTH - x > 0) ? (DEFAULT_WIDTH - x) : DEFAULT_WIDTH;
+                int ph = (DEFAULT_HEIGHT - y > 0) ? (DEFAULT_HEIGHT - y) : DEFAULT_HEIGHT;
+                view.measure(View.MeasureSpec.makeMeasureSpec(pw, View.MeasureSpec.AT_MOST),
+                             View.MeasureSpec.makeMeasureSpec(ph, View.MeasureSpec.AT_MOST));
+                int mw = view.getMeasuredWidth() > 0 ? view.getMeasuredWidth() : pw;
+                int mh = view.getMeasuredHeight() > 0 ? view.getMeasuredHeight() : ph;
+                view.layout(view.getLeft(), view.getTop(), view.getLeft() + mw, view.getTop() + mh);
+                w = view.getWidth();
+                h = view.getHeight();
+            } catch (Throwable ignored) {}
+        }
 
         if (w <= 0 || h <= 0) return;
 

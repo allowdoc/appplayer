@@ -97,6 +97,14 @@ public class Canvas extends BaseCanvas {
         return false;
     }
 
+    public boolean isRecordingFor(Object o) {
+        return false;
+    }
+
+    public void enableZ() {}
+
+    public void disableZ() {}
+
     public int getWidth() {
         return mWidth;
     }
@@ -318,6 +326,40 @@ public class Canvas extends BaseCanvas {
         Rect r = new Rect();
         getClipBounds(r);
         return r;
+    }
+
+    public enum EdgeType {
+        BW(0),
+        AA(1);
+
+        public final int nativeInt;
+        EdgeType(int nativeInt) {
+            this.nativeInt = nativeInt;
+        }
+    }
+
+    public boolean quickReject(RectF rect, EdgeType type) {
+        return false;
+    }
+
+    public boolean quickReject(Path path, EdgeType type) {
+        return false;
+    }
+
+    public boolean quickReject(float left, float top, float right, float bottom, EdgeType type) {
+        return false;
+    }
+
+    public boolean quickReject(RectF rect) {
+        return false;
+    }
+
+    public boolean quickReject(Path path) {
+        return false;
+    }
+
+    public boolean quickReject(float left, float top, float right, float bottom) {
+        return false;
     }
 
     private void applyPaint(Paint paint) {

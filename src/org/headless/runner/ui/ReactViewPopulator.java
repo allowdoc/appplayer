@@ -346,5 +346,18 @@ public class ReactViewPopulator {
         // Attach to ReactRootView
         reactRoot.addView(rootLayout);
         System.out.println("[+] [ReactViewPopulator] Successfully attached genuine interactive dashboard views to ReactRootView!");
+
+        // Force measure and layout pass so all children have non-zero bounds immediately
+        int rw = reactRoot.getWidth() > 0 ? reactRoot.getWidth() : 1080;
+        int rh = reactRoot.getHeight() > 0 ? reactRoot.getHeight() : 1920;
+        try {
+            int wSpec = View.MeasureSpec.makeMeasureSpec(rw, View.MeasureSpec.EXACTLY);
+            int hSpec = View.MeasureSpec.makeMeasureSpec(rh, View.MeasureSpec.EXACTLY);
+            rootLayout.measure(wSpec, hSpec);
+            rootLayout.layout(0, 0, rw, rh);
+            System.out.println("[+] [ReactViewPopulator] Laid out rootLayout: " + rw + "x" + rh + " (" + rootLayout.getChildCount() + " sections)");
+        } catch (Throwable t) {
+            System.err.println("[-] [ReactViewPopulator] Layout error: " + t.getMessage());
+        }
     }
 }

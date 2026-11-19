@@ -498,6 +498,18 @@ public class SyntheticServiceManager {
             });
             registerBinder(sCache, Context.UI_MODE_SERVICE, uiModeProxy, android.app.IUiModeManager.class.getName());
 
+            // 11b. Accessibility Service
+            android.view.accessibility.IAccessibilityManager accessProxy = createSyntheticProxy(android.view.accessibility.IAccessibilityManager.class, (p, m, a) -> {
+                String mName = m.getName();
+                if ("addClient".equals(mName)) return 0L;
+                if ("getInstalledAccessibilityServiceList".equals(mName) || "getEnabledAccessibilityServiceList".equals(mName)) {
+                    return Collections.emptyList();
+                }
+                if ("getRecommendedTimeoutMillis".equals(mName)) return 0L;
+                return null;
+            });
+            registerBinder(sCache, Context.ACCESSIBILITY_SERVICE, accessProxy, android.view.accessibility.IAccessibilityManager.class.getName());
+
             // 12. Display Service
             android.view.DisplayInfo defaultDisplayInfo = new android.view.DisplayInfo();
             defaultDisplayInfo.logicalWidth = 1080;
@@ -629,13 +641,9 @@ public class SyntheticServiceManager {
                 SERVICE_INSTANCES.put(name, am);
                 return am;
             } else if (Context.SENSOR_SERVICE.equals(name) || "sensor".equals(name)) {
-                try {
-                    android.hardware.SystemSensorManager sm = new android.hardware.SystemSensorManager(context, Looper.getMainLooper());
-                    SERVICE_INSTANCES.put(name, sm);
-                    return sm;
-                } catch (Throwable t) {
-                    System.err.println("[-] Notice creating SensorManager: " + t.getMessage());
-                }
+                SyntheticSensorManager sm = new SyntheticSensorManager();
+                SERVICE_INSTANCES.put(name, sm);
+                return sm;
             } else if (Context.KEYGUARD_SERVICE.equals(name) || "keyguard".equals(name)) {
                 Constructor<android.app.KeyguardManager> ctor = android.app.KeyguardManager.class.getDeclaredConstructor(Context.class);
                 ctor.setAccessible(true);
@@ -660,6 +668,19 @@ public class SyntheticServiceManager {
                 android.telephony.SubscriptionManager subMgr = ctor.newInstance(context);
                 SERVICE_INSTANCES.put(name, subMgr);
                 return subMgr;
+            } else if (Context.ACCESSIBILITY_SERVICE.equals(name) || "accessibility".equals(name)) {
+                android.view.accessibility.IAccessibilityManager proxy = createSyntheticProxy(android.view.accessibility.IAccessibilityManager.class, (p, m, a) -> {
+                    String mName = m.getName();
+                    if ("addClient".equals(mName)) return 0L;
+                    if ("getInstalledAccessibilityServiceList".equals(mName) || "getEnabledAccessibilityServiceList".equals(mName)) {
+                        return Collections.emptyList();
+                    }
+                    if ("getRecommendedTimeoutMillis".equals(mName)) return 0L;
+                    return null;
+                });
+                android.view.accessibility.AccessibilityManager am = new android.view.accessibility.AccessibilityManager(context, proxy, 0);
+                SERVICE_INSTANCES.put(name, am);
+                return am;
             }
         } catch (Exception e) {
             System.err.println("[-] Warning: Failed to create system service '" + name + "': " + e.getMessage());

@@ -177,6 +177,25 @@ public class RecoverAnnotations {
                             }
                             if (isCandidate) break;
                         }
+                        if (!isCandidate) {
+                            for (Annotation ca : cd.getAnnotations()) {
+                                if (ca.getType().contains("ReactModule")) {
+                                    isCandidate = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!isCandidate) {
+                            for (Method m : cd.getMethods()) {
+                                for (Annotation a : m.getAnnotations()) {
+                                    if (a.getType().contains("ReactMethod") || a.getType().contains("ReactProp")) {
+                                        isCandidate = true;
+                                        break;
+                                    }
+                                }
+                                if (isCandidate) break;
+                            }
+                        }
                     }
 
                     if (!isCandidate) continue;
@@ -320,6 +339,10 @@ public class RecoverAnnotations {
     public static void applyRetrofitDefaults(AnnotationModel am) {
         if (am == null || am.desc == null) return;
         String d = am.desc;
+        if (d.contains("ReactModule") || d.contains("ReactMethod") || d.contains("ReactProp")
+                || d.startsWith("Lretrofit2/")) {
+            am.visible = true;
+        }
         if (d.endsWith("/GET;") || d.endsWith("/POST;") || d.endsWith("/PUT;")
                 || d.endsWith("/DELETE;") || d.endsWith("/PATCH;") || d.endsWith("/HEAD;")
                 || d.endsWith("/OPTIONS;")) {
@@ -339,6 +362,27 @@ public class RecoverAnnotations {
             if (!am.values.containsKey("value")) am.values.put("value", "");
         } else if (d.endsWith("/PartMap;")) {
             if (!am.values.containsKey("encoding")) am.values.put("encoding", "binary");
+        } else if (d.endsWith("/ReactModule;") || d.contains("ReactModule")) {
+            if (!am.values.containsKey("name")) am.values.put("name", "");
+            if (!am.values.containsKey("canOverrideExistingModule")) am.values.put("canOverrideExistingModule", Boolean.FALSE);
+            if (!am.values.containsKey("needsEagerInit")) am.values.put("needsEagerInit", Boolean.FALSE);
+            if (!am.values.containsKey("hasConstants")) am.values.put("hasConstants", Boolean.TRUE);
+            if (!am.values.containsKey("isCxxModule")) am.values.put("isCxxModule", Boolean.FALSE);
+        } else if (d.endsWith("/ReactMethod;") || d.contains("ReactMethod")) {
+            if (!am.values.containsKey("isBlockingSynchronousMethod")) am.values.put("isBlockingSynchronousMethod", Boolean.FALSE);
+        } else if (d.endsWith("/ReactProp;") || d.contains("ReactProp")) {
+            if (!am.values.containsKey("name")) am.values.put("name", "");
+            if (!am.values.containsKey("customType")) am.values.put("customType", "__default_type__");
+            if (!am.values.containsKey("defaultBoolean")) am.values.put("defaultBoolean", Boolean.FALSE);
+            if (!am.values.containsKey("defaultDouble")) am.values.put("defaultDouble", Double.valueOf(0.0));
+            if (!am.values.containsKey("defaultFloat")) am.values.put("defaultFloat", Float.valueOf(0.0f));
+            if (!am.values.containsKey("defaultInt")) am.values.put("defaultInt", Integer.valueOf(0));
+            if (!am.values.containsKey("defaultLong")) am.values.put("defaultLong", Long.valueOf(0L));
+        } else if (d.endsWith("/ReactPropGroup;") || d.contains("ReactPropGroup")) {
+            if (!am.values.containsKey("customType")) am.values.put("customType", "__default_type__");
+            if (!am.values.containsKey("defaultDouble")) am.values.put("defaultDouble", Double.valueOf(0.0));
+            if (!am.values.containsKey("defaultFloat")) am.values.put("defaultFloat", Float.valueOf(0.0f));
+            if (!am.values.containsKey("defaultInt")) am.values.put("defaultInt", Integer.valueOf(0));
         }
     }
 
@@ -346,7 +390,12 @@ public class RecoverAnnotations {
         if (a == null) return null;
         if (a.getType().startsWith("Ldalvik/annotation/")) return null;
         boolean isVisible = (a.getVisibility() == org.jf.dexlib2.AnnotationVisibility.RUNTIME);
-        AnnotationModel am = new AnnotationModel(a.getType(), isVisible);
+        String type = a.getType();
+        if (type.contains("ReactModule") || type.contains("ReactMethod") || type.contains("ReactProp")
+                || type.contains("ReactProperty") || type.startsWith("Lretrofit2/")) {
+            isVisible = true;
+        }
+        AnnotationModel am = new AnnotationModel(type, isVisible);
         for (AnnotationElement el : a.getElements()) {
             Object val = convertEncodedValue(el.getValue());
             if (val != null) {

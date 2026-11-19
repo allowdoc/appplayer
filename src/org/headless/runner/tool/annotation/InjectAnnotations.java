@@ -105,6 +105,49 @@ public class InjectAnnotations {
                         } catch (Throwable t) {
                             System.err.println("[-] Error patching BugsnagClient: " + t.getMessage());
                         }
+                    } else if (className.startsWith("com/swmansion/") ||
+                            className.startsWith("com/facebook/react/modules/blob/") ||
+                            "com/facebook/react/devsupport/InspectorFlags".equals(className)) {
+                        // Strip ACC_NATIVE and stub method bodies to prevent UnsatisfiedLinkError across pure JVM
+                        try (InputStream is = jar.getInputStream(entry)) {
+                            byte[] classBytes = is.readAllBytes();
+                            byte[] patchedBytes = stubNativeMethods(classBytes);
+                            if (cam != null) {
+                                patchedBytes = patchClass(patchedBytes, cam, interfaceSet);
+                            }
+
+                            JarEntry newEntry = new JarEntry(name);
+                            newEntry.setTime(entry.getTime());
+                            jos.putNextEntry(newEntry);
+                            jos.write(patchedBytes);
+                            jos.closeEntry();
+                            patchedCount++;
+                            continue;
+                        } catch (Throwable t) {
+                            System.err.println("[-] Error stubbing native methods for " + className + ": " + t.getMessage());
+                        }
+                    } else if (className.startsWith("com/facebook/react/") && (
+                            className.endsWith("ReactModule") ||
+                            className.endsWith("ReactMethod") ||
+                            className.endsWith("ReactProp") ||
+                            className.endsWith("ReactPropGroup") ||
+                            className.endsWith("ReactPropertyHolder")
+                    )) {
+                        // Inject @Retention(RetentionPolicy.RUNTIME) and default values for all annotation methods
+                        try (InputStream is = jar.getInputStream(entry)) {
+                            byte[] classBytes = is.readAllBytes();
+                            byte[] patchedBytes = patchReactAnnotation(classBytes);
+
+                            JarEntry newEntry = new JarEntry(name);
+                            newEntry.setTime(entry.getTime());
+                            jos.putNextEntry(newEntry);
+                            jos.write(patchedBytes);
+                            jos.closeEntry();
+                            patchedCount++;
+                            continue;
+                        } catch (Throwable t) {
+                            System.err.println("[-] Error patching React annotation " + className + ": " + t.getMessage());
+                        }
                     } else if (cam != null) {
                         try (InputStream is = jar.getInputStream(entry)) {
                             byte[] classBytes = is.readAllBytes();
@@ -263,15 +306,6 @@ public class InjectAnnotations {
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                 MethodAnnotationModel mam = cam.methods.get(name + ":" + descriptor);
-                if (mam == null) {
-                    // Try name-only match if descriptor slightly differs
-                    for (MethodAnnotationModel m : cam.methods.values()) {
-                        if (m.name.equals(name)) {
-                            mam = m;
-                            break;
-                        }
-                    }
-                }
 
                 String effectiveSignature = (mam != null && mam.signature != null) ? mam.signature : signature;
                 MethodVisitor mv = super.visitMethod(access, name, descriptor, effectiveSignature, exceptions);
@@ -497,6 +531,144 @@ public class InjectAnnotations {
                         }
                     }
                 };
+            }
+        };
+        cr.accept(cv, 0);
+        return cw.toByteArray();
+    }
+
+    private static byte[] patchReactAnnotation(byte[] classBytes) {
+        ClassReader cr = new ClassReader(classBytes);
+        ClassWriter cw = new ClassWriter(0);
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String mName, String descriptor, String signature, String[] exceptions) {
+                MethodVisitor mv = super.visitMethod(access, mName, descriptor, signature, exceptions);
+                if (mv != null) {
+                    if ("canOverrideExistingModule".equals(mName) || "needsEagerInit".equals(mName) || "isCxxModule".equals(mName)
+                            || "isBlockingSynchronousMethod".equals(mName) || "defaultBoolean".equals(mName)) {
+                        AnnotationVisitor av = mv.visitAnnotationDefault();
+                        if (av != null) {
+                            av.visit(null, Boolean.FALSE);
+                            av.visitEnd();
+                        }
+                    } else if ("hasConstants".equals(mName)) {
+                        AnnotationVisitor av = mv.visitAnnotationDefault();
+                        if (av != null) {
+                            av.visit(null, Boolean.TRUE);
+                            av.visitEnd();
+                        }
+                    } else if ("customType".equals(mName)) {
+                        AnnotationVisitor av = mv.visitAnnotationDefault();
+                        if (av != null) {
+                            av.visit(null, "__default_type__");
+                            av.visitEnd();
+                        }
+                    } else if ("name".equals(mName)) {
+                        AnnotationVisitor av = mv.visitAnnotationDefault();
+                        if (av != null) {
+                            av.visit(null, "");
+                            av.visitEnd();
+                        }
+                    } else if ("defaultDouble".equals(mName)) {
+                        AnnotationVisitor av = mv.visitAnnotationDefault();
+                        if (av != null) {
+                            av.visit(null, Double.valueOf(0.0));
+                            av.visitEnd();
+                        }
+                    } else if ("defaultFloat".equals(mName)) {
+                        AnnotationVisitor av = mv.visitAnnotationDefault();
+                        if (av != null) {
+                            av.visit(null, Float.valueOf(0.0f));
+                            av.visitEnd();
+                        }
+                    } else if ("defaultInt".equals(mName)) {
+                        AnnotationVisitor av = mv.visitAnnotationDefault();
+                        if (av != null) {
+                            av.visit(null, Integer.valueOf(0));
+                            av.visitEnd();
+                        }
+                    } else if ("defaultLong".equals(mName)) {
+                        AnnotationVisitor av = mv.visitAnnotationDefault();
+                        if (av != null) {
+                            av.visit(null, Long.valueOf(0L));
+                            av.visitEnd();
+                        }
+                    }
+                }
+                return mv;
+            }
+
+            @Override
+            public void visitEnd() {
+                AnnotationVisitor av = super.visitAnnotation("Ljava/lang/annotation/Retention;", true);
+                if (av != null) {
+                    av.visitEnum("value", "Ljava/lang/annotation/RetentionPolicy;", "RUNTIME");
+                    av.visitEnd();
+                }
+                super.visitEnd();
+            }
+        };
+        cr.accept(cv, 0);
+        return cw.toByteArray();
+    }
+
+    private static byte[] stubNativeMethods(byte[] classBytes) {
+        ClassReader cr = new ClassReader(classBytes);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                if ((access & Opcodes.ACC_NATIVE) != 0) {
+                    int newAccess = access & ~Opcodes.ACC_NATIVE;
+                    MethodVisitor mv = super.visitMethod(newAccess, name, desc, sig, ex);
+                    mv.visitCode();
+                    Type ret = Type.getReturnType(desc);
+                    switch (ret.getSort()) {
+                        case Type.VOID:
+                            mv.visitInsn(Opcodes.RETURN);
+                            break;
+                        case Type.BOOLEAN:
+                        case Type.BYTE:
+                        case Type.CHAR:
+                        case Type.SHORT:
+                        case Type.INT:
+                            mv.visitInsn(Opcodes.ICONST_0);
+                            mv.visitInsn(Opcodes.IRETURN);
+                            break;
+                        case Type.LONG:
+                            mv.visitInsn(Opcodes.LCONST_0);
+                            mv.visitInsn(Opcodes.LRETURN);
+                            break;
+                        case Type.FLOAT:
+                            mv.visitInsn(Opcodes.FCONST_0);
+                            mv.visitInsn(Opcodes.FRETURN);
+                            break;
+                        case Type.DOUBLE:
+                            mv.visitInsn(Opcodes.DCONST_0);
+                            mv.visitInsn(Opcodes.DRETURN);
+                            break;
+                        case Type.OBJECT:
+                            if ("Lcom/facebook/jni/HybridData;".equals(ret.getDescriptor())) {
+                                mv.visitTypeInsn(Opcodes.NEW, "com/facebook/jni/HybridData");
+                                mv.visitInsn(Opcodes.DUP);
+                                mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "com/facebook/jni/HybridData", "<init>", "()V", false);
+                                mv.visitInsn(Opcodes.ARETURN);
+                            } else {
+                                mv.visitInsn(Opcodes.ACONST_NULL);
+                                mv.visitInsn(Opcodes.ARETURN);
+                            }
+                            break;
+                        default:
+                            mv.visitInsn(Opcodes.ACONST_NULL);
+                            mv.visitInsn(Opcodes.ARETURN);
+                            break;
+                    }
+                    mv.visitMaxs(2, 2);
+                    mv.visitEnd();
+                    return null;
+                }
+                return super.visitMethod(access, name, desc, sig, ex);
             }
         };
         cr.accept(cv, 0);

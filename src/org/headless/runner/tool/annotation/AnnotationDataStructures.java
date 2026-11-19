@@ -65,7 +65,7 @@ public class AnnotationDataStructures {
     public static class AnnotationModel implements Serializable {
         private static final long serialVersionUID = 1L;
         public final String desc;
-        public final boolean visible;
+        public boolean visible;
         public final Map<String, Object> values = new LinkedHashMap<>();
 
         public AnnotationModel(String desc, boolean visible) {

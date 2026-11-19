@@ -10,6 +10,7 @@ set SQLITE_JAR=%RUNNER_DIR%\lib\sqlite-jdbc.jar
 set DEXLIB_JAR=%RUNNER_DIR%\lib\dexlib2-2.5.2.jar
 set GUAVA_JAR=%RUNNER_DIR%\lib\guava-27.1-android.jar
 set ASM_JAR=%RUNNER_DIR%\lib\asm-9.6.jar
+set ASM_COMMONS_JAR=%RUNNER_DIR%\lib\asm-commons-9.6.jar
 set ENJARIFY_BAT=%RUNNER_DIR%\tools\enjarify\enjarify.bat
 
 set TARGET_APK=C:\Users\Noval\.gemini\antigravity\scratch\headless-android\base.apk
@@ -59,7 +60,7 @@ echo [+] [AutoRebuild] app.jar regenerated from %TARGET_APK%.
 REM Annotation-recovery pass: safe to call unconditionally: AnnotationPipeline
 REM itself no-ops and reuses app-patched.jar when it is already newer than the APK.
 echo [*] [AutoRebuild] Ensuring annotations are recovered into app-patched.jar...
-"%JAVA_EXE%" -cp "%BIN_DIR%;%DEXLIB_JAR%;%GUAVA_JAR%;%ASM_JAR%;%AGENT_JAR%;%JAR_FILE%" org.headless.runner.tool.annotation.AnnotationPipeline "%TARGET_APK%" "%BASE_JAR%" "%PATCHED_JAR%" "%RUNNER_DIR%\data"
+"%JAVA_EXE%" -cp "%BIN_DIR%;%DEXLIB_JAR%;%GUAVA_JAR%;%ASM_JAR%;%ASM_COMMONS_JAR%;%AGENT_JAR%;%JAR_FILE%" org.headless.runner.tool.annotation.AnnotationPipeline "%TARGET_APK%" "%BASE_JAR%" "%PATCHED_JAR%" "%RUNNER_DIR%\data"
 :after_rebuild
 
 set APP_JAR=%PATCHED_JAR%

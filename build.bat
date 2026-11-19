@@ -10,6 +10,6 @@ if exist app-patched.jar (
 ) else (
     set APP_JAR=app.jar
 )
-%JAVAC% -encoding UTF-8 -cp "bin;lib\sqlite-jdbc.jar;lib\runner-agent.jar;lib\android-all-10.jar;lib\dexlib2-2.5.2.jar;lib\guava-27.1-android.jar;lib\asm-9.6.jar;%APP_JAR%" -d bin @sources.txt
+%JAVAC% -encoding UTF-8 -cp "bin;lib\sqlite-jdbc.jar;lib\runner-agent.jar;lib\android-all-10.jar;lib\dexlib2-2.5.2.jar;lib\guava-27.1-android.jar;lib\asm-9.6.jar;lib\asm-commons-9.6.jar;%APP_JAR%" -d bin @sources.txt
 echo Build finished with exit code %ERRORLEVEL%
 endlocal

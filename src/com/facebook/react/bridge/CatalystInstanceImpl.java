@@ -192,7 +192,6 @@ public class CatalystInstanceImpl implements CatalystInstance {
         return mNativeModuleRegistry != null ? mNativeModuleRegistry.getModule(nativeModuleInterface) : null;
     }
 
-    @Override
     public NativeModule getNativeModule(String moduleName) {
         return mNativeModuleRegistry != null ? mNativeModuleRegistry.getModule(moduleName) : null;
     }

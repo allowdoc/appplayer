@@ -2,11 +2,61 @@ package org.headless.runner.agent;
 
 import org.objectweb.asm.*;
 
+import java.io.File;
+import java.io.InputStream;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
 import java.security.ProtectionDomain;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 public class RuntimeNeutralizerAgent {
+
+    private static final Map<String, byte[]> COLLISION_CLASS_CACHE = new ConcurrentHashMap<>();
+    private static volatile boolean collisionsIndexed = false;
+
+    private static void indexCollisionsIfNeeded() {
+        if (collisionsIndexed) return;
+        synchronized (COLLISION_CLASS_CACHE) {
+            if (collisionsIndexed) return;
+            for (String jarName : new String[]{"app-patched.jar", "app.jar"}) {
+                File f = new File(jarName);
+                if (!f.exists()) continue;
+                try (JarFile jf = new JarFile(f)) {
+                    Map<String, List<JarEntry>> lowerMap = new HashMap<>();
+                    Enumeration<JarEntry> en = jf.entries();
+                    while (en.hasMoreElements()) {
+                        JarEntry e = en.nextElement();
+                        String name = e.getName();
+                        if (name.endsWith(".class")) {
+                            lowerMap.computeIfAbsent(name.toLowerCase(Locale.ROOT), k -> new ArrayList<>()).add(e);
+                        }
+                    }
+                    int count = 0;
+                    for (List<JarEntry> entries : lowerMap.values()) {
+                        if (entries.size() > 1) {
+                            for (JarEntry e : entries) {
+                                try (InputStream is = jf.getInputStream(e)) {
+                                    String internalName = e.getName().substring(0, e.getName().length() - 6);
+                                    COLLISION_CLASS_CACHE.put(internalName, is.readAllBytes());
+                                    count++;
+                                }
+                            }
+                        }
+                    }
+                    if (count > 0) {
+                        System.out.println("[+] [Engine Agent] Indexed " + count + " case-sensitive class(es) to prevent Windows case collisions from: " + jarName);
+                        break;
+                    }
+                } catch (Throwable t) {
+                    System.err.println("[-] [Engine Agent] Error indexing jar collisions: " + t.getMessage());
+                }
+            }
+            collisionsIndexed = true;
+        }
+    }
 
     public static void onExitIntercepted(int code) {
         System.out.println("[+] [Engine Neutralizer] Successfully blocked System.exit(" + code + ") call!");
@@ -18,18 +68,30 @@ public class RuntimeNeutralizerAgent {
 
     public static void premain(String agentArgs, Instrumentation inst) {
         System.out.println("[*] [Engine Agent] Native Security & Exit Neutralizer Active!");
+        indexCollisionsIfNeeded();
+
         inst.addTransformer(new ClassFileTransformer() {
             @Override
             public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
                                     ProtectionDomain protectionDomain, byte[] classfileBuffer) {
-                if (className == null || className.startsWith("java/") || className.startsWith("jdk/") || className.startsWith("sun/")) {
+                if (className == null || className.startsWith("java/") || className.startsWith("jdk/")
+                        || className.startsWith("sun/") || className.startsWith("org/headless/runner/")
+                        || className.startsWith("android/") || className.startsWith("androidx/")) {
                     return null;
                 }
-                if (!containsBytes(classfileBuffer, EXIT_BYTES) && !containsBytes(classfileBuffer, HALT_BYTES)) {
-                    return null;
+
+                // 1. Resolve Windows case-insensitive zip collisions (e.g. c1 vs C1) in O(1) time
+                byte[] exact = COLLISION_CLASS_CACHE.get(className);
+                byte[] effectiveBuffer = (exact != null) ? exact : classfileBuffer;
+                boolean replacedBuffer = (exact != null);
+
+                // 2. Rewrite System.exit / Runtime.exit only if bytecode contains 'exit' or 'halt'
+                if (!containsBytes(effectiveBuffer, EXIT_BYTES) && !containsBytes(effectiveBuffer, HALT_BYTES)) {
+                    return replacedBuffer ? effectiveBuffer : null;
                 }
+
                 try {
-                    ClassReader cr = new ClassReader(classfileBuffer);
+                    ClassReader cr = new ClassReader(effectiveBuffer);
                     ClassWriter cw = new ClassWriter(cr, 0);
                     final boolean[] modified = new boolean[1];
                     ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
@@ -69,9 +131,9 @@ public class RuntimeNeutralizerAgent {
                         }
                     };
                     cr.accept(cv, 0);
-                    return modified[0] ? cw.toByteArray() : null;
+                    return modified[0] ? cw.toByteArray() : (replacedBuffer ? effectiveBuffer : null);
                 } catch (Throwable t) {
-                    return null;
+                    return replacedBuffer ? effectiveBuffer : null;
                 }
             }
         });

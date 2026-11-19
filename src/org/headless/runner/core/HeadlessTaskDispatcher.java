@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class HeadlessTaskDispatcher {
     private static HeadlessTaskDispatcher sInstance;
+    private static final java.util.Set<String> sConnectedGmsServices = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
 
     private final ExecutorService mWorkerPool = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "HeadlessTaskWorker");
@@ -193,7 +194,9 @@ public class HeadlessTaskDispatcher {
             String svcName = finalComp.getClassName();
             if (svcName.contains("ads.identifier") || svcName.contains("SessionLifecycleService")) {
                 mWorkerPool.submit(() -> {
-                    System.out.println("[+] [HeadlessTask] Connecting SyntheticGmsBroker to: " + finalComp.getClassName());
+                    if (sConnectedGmsServices.add(svcName)) {
+                        System.out.println("[+] [HeadlessTask] SyntheticGmsBroker active for: " + svcName);
+                    }
                     IBinder broker = SyntheticGmsBroker.getInstance();
                     mBoundServices.put(conn, new BoundServiceRecord(null, intent, finalComp));
                     mExecutedTaskCount.incrementAndGet();
@@ -201,7 +204,6 @@ public class HeadlessTaskDispatcher {
                     runOnMainThread(() -> {
                         try {
                             conn.onServiceConnected(finalComp, broker);
-                            System.out.println("[+] [HeadlessTask] GmsBroker connected successfully to " + finalComp.getClassName());
                         } catch (Throwable t) {
                             System.err.println("[-] Error in onServiceConnected for GmsBroker: " + t);
                         }

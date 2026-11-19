@@ -63,6 +63,8 @@ echo [*] [AutoRebuild] Ensuring annotations are recovered into app-patched.jar..
 "%JAVA_EXE%" -cp "%BIN_DIR%;%DEXLIB_JAR%;%GUAVA_JAR%;%ASM_JAR%;%ASM_COMMONS_JAR%;%AGENT_JAR%;%JAR_FILE%" org.headless.runner.tool.annotation.AnnotationPipeline "%TARGET_APK%" "%BASE_JAR%" "%PATCHED_JAR%" "%RUNNER_DIR%\data"
 :after_rebuild
 
+if exist "%RUNNER_DIR%\lib\android-all-10-framed.jar" set JAR_FILE=%RUNNER_DIR%\lib\android-all-10-framed.jar
+
 set APP_JAR=%PATCHED_JAR%
 if not exist "%APP_JAR%" set APP_JAR=%BASE_JAR%
 if not exist "%APP_JAR%" (

@@ -427,8 +427,19 @@ public class SyntheticServiceManager {
                     android.app.Activity targetAct = ActivityStack.getInstance().getActivityByToken(token);
                     if (targetAct == null) targetAct = ActivityStack.getInstance().getTopActivity();
                     System.out.println("[*] [IActivityManager] finishActivity called for: " + (targetAct != null ? targetAct.getClass().getName() : "null"));
-                    new Throwable("[DEBUG] IActivityManager.finishActivity caller trace").printStackTrace(System.out);
                     if (targetAct != null) {
+                        StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+                        boolean isExternalLinkFinish = false;
+                        for (StackTraceElement elem : stack) {
+                            if (elem.getClassName().contains("ExternalLinkUriHandler") || elem.getClassName().contains("branch.referral")) {
+                                isExternalLinkFinish = true;
+                                break;
+                            }
+                        }
+                        if (isExternalLinkFinish) {
+                            System.out.println("[*] [ActivityStack] Ignoring background attribution trampoline finish on active screen: " + targetAct.getClass().getName());
+                            return true;
+                        }
                         ActivityStack.getInstance().finishActivity(targetAct);
                     }
                     return true;
@@ -470,8 +481,19 @@ public class SyntheticServiceManager {
                     android.app.Activity targetAct = ActivityStack.getInstance().getActivityByToken(token);
                     if (targetAct == null) targetAct = ActivityStack.getInstance().getTopActivity();
                     System.out.println("[*] [IActivityManager] finishActivity called for: " + (targetAct != null ? targetAct.getClass().getName() : "null"));
-                    new Throwable("[DEBUG] IActivityManager.finishActivity caller trace").printStackTrace(System.out);
                     if (targetAct != null) {
+                        StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+                        boolean isExternalLinkFinish = false;
+                        for (StackTraceElement elem : stack) {
+                            if (elem.getClassName().contains("ExternalLinkUriHandler") || elem.getClassName().contains("branch.referral")) {
+                                isExternalLinkFinish = true;
+                                break;
+                            }
+                        }
+                        if (isExternalLinkFinish) {
+                            System.out.println("[*] [ActivityStack] Ignoring background attribution trampoline finish on active screen: " + targetAct.getClass().getName());
+                            return true;
+                        }
                         ActivityStack.getInstance().finishActivity(targetAct);
                     }
                     return true;

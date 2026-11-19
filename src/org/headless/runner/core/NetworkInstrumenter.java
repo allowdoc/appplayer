@@ -36,6 +36,27 @@ public class NetworkInstrumenter {
                 Object httpMethod = request.getClass().getMethod("method").invoke(request);
 
                 System.out.println("[+] " + NET_TAG + " ---> " + httpMethod + " " + url);
+                String urlStr = String.valueOf(url);
+                if (urlStr.contains("firebaseinstallations.googleapis.com")) {
+                    try {
+                        Class<?> builderCls = Class.forName("okhttp3.Response$Builder");
+                        Object builder = builderCls.getDeclaredConstructor().newInstance();
+                        builderCls.getMethod("request", request.getClass()).invoke(builder, request);
+                        Class<?> protoCls = Class.forName("okhttp3.Protocol");
+                        builderCls.getMethod("protocol", protoCls).invoke(builder, Enum.valueOf((Class<Enum>) protoCls, "HTTP_1_1"));
+                        builderCls.getMethod("code", int.class).invoke(builder, 200);
+                        builderCls.getMethod("message", String.class).invoke(builder, "OK");
+                        String json = "{\"name\":\"projects/headless/installations/c1234567890abcdef\",\"fid\":\"c1234567890abcdef\",\"refreshToken\":\"dummy_refresh\",\"authToken\":{\"token\":\"dummy_token\",\"expiresIn\":\"604800s\"}}";
+                        Class<?> mediaTypeCls = Class.forName("okhttp3.MediaType");
+                        Object mediaType = mediaTypeCls.getMethod("parse", String.class).invoke(null, "application/json; charset=utf-8");
+                        Class<?> respBodyCls = Class.forName("okhttp3.ResponseBody");
+                        Object body = respBodyCls.getMethod("create", mediaTypeCls, String.class).invoke(null, mediaType, json);
+                        builderCls.getMethod("body", respBodyCls).invoke(builder, body);
+                        Object syntheticResp = builderCls.getMethod("build").invoke(builder);
+                        System.out.println("[+] " + NET_TAG + " <--- 200 " + url + " [Synthetic Firebase Installations Success]");
+                        return syntheticResp;
+                    } catch (Throwable ignored) {}
+                }
                 long startMs = System.currentTimeMillis();
                 try {
                     Object response = chain.getClass().getMethod("proceed", request.getClass()).invoke(chain, request);

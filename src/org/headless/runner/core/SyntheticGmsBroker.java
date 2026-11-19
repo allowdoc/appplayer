@@ -120,8 +120,13 @@ public class SyntheticGmsBroker extends Binder {
         protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) throws RemoteException {
             if (reply != null) {
                 reply.writeNoException();
-                // If the client expects an integer (e.g. 0 for success) or null object,
-                // writing no-exception is sufficient for AIDL return conventions.
+                if (code == 1) {
+                    // String getId() for IAdvertisingIdService
+                    reply.writeString("38400000-8cf0-11bd-b23e-10b96e4ef00d");
+                } else if (code == 2) {
+                    // boolean isLimitAdTrackingEnabled() -> false (0)
+                    reply.writeInt(0);
+                }
             }
             return true;
         }

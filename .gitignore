@@ -3,6 +3,8 @@
 *.tar.gz
 *.apk
 lib/android-all-10.jar
+lib/*-framed.jar
+*.frames.*
 app.jar
 app.jar.bak
 app-patched.jar

@@ -15,10 +15,6 @@ public class BaseBundlePatcher {
 
     public static void patchIfNeeded(File androidAllJar, File binDir) {
         File targetClass = new File(binDir, "android/os/BaseBundle.class");
-        if (targetClass.exists() && targetClass.length() > 0) {
-            return;
-        }
-
         if (androidAllJar == null || !androidAllJar.exists()) {
             return;
         }
@@ -33,56 +29,67 @@ public class BaseBundlePatcher {
             }
 
             ClassReader cr = new ClassReader(originalBytes);
-            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
+            ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS) {
+                @Override
+                protected String getCommonSuperClass(String type1, String type2) {
+                    try {
+                        return super.getCommonSuperClass(type1, type2);
+                    } catch (Throwable ignored) {
+                        return "java/lang/Object";
+                    }
+                }
+            };
             ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
                     if ("getString".equals(name) && "(Ljava/lang/String;)Ljava/lang/String;".equals(desc)) {
-                        MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
-                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                        MethodVisitor output = super.visitMethod(access, name, desc, sig, ex);
+                        // Discard the original method body.  Appending to it leaves
+                        // unreachable bytecode and invalid control-flow frames.
+                        return new MethodVisitor(Opcodes.ASM9) {
                             @Override
-                            public void visitCode() {
-                                super.visitCode();
+                            public void visitEnd() {
+                                output.visitCode();
                                 // unparcel();
-                                mv.visitVarInsn(Opcodes.ALOAD, 0);
-                                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "android/os/BaseBundle", "unparcel", "()V", false);
+                                output.visitVarInsn(Opcodes.ALOAD, 0);
+                                output.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "android/os/BaseBundle", "unparcel", "()V", false);
 
                                 // if (this.mMap == null) return null;
-                                mv.visitVarInsn(Opcodes.ALOAD, 0);
-                                mv.visitFieldInsn(Opcodes.GETFIELD, "android/os/BaseBundle", "mMap", "Landroid/util/ArrayMap;");
+                                output.visitVarInsn(Opcodes.ALOAD, 0);
+                                output.visitFieldInsn(Opcodes.GETFIELD, "android/os/BaseBundle", "mMap", "Landroid/util/ArrayMap;");
                                 Label nullLabel = new Label();
-                                mv.visitJumpInsn(Opcodes.IFNULL, nullLabel);
+                                output.visitJumpInsn(Opcodes.IFNULL, nullLabel);
 
                                 // Object o = this.mMap.get(key);
-                                mv.visitVarInsn(Opcodes.ALOAD, 0);
-                                mv.visitFieldInsn(Opcodes.GETFIELD, "android/os/BaseBundle", "mMap", "Landroid/util/ArrayMap;");
-                                mv.visitVarInsn(Opcodes.ALOAD, 1);
-                                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "android/util/ArrayMap", "get", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
-                                mv.visitVarInsn(Opcodes.ASTORE, 2);
+                                output.visitVarInsn(Opcodes.ALOAD, 0);
+                                output.visitFieldInsn(Opcodes.GETFIELD, "android/os/BaseBundle", "mMap", "Landroid/util/ArrayMap;");
+                                output.visitVarInsn(Opcodes.ALOAD, 1);
+                                output.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "android/util/ArrayMap", "get", "(Ljava/lang/Object;)Ljava/lang/Object;", false);
+                                output.visitVarInsn(Opcodes.ASTORE, 2);
 
                                 // if (o == null) return null;
-                                mv.visitVarInsn(Opcodes.ALOAD, 2);
-                                mv.visitJumpInsn(Opcodes.IFNULL, nullLabel);
+                                output.visitVarInsn(Opcodes.ALOAD, 2);
+                                output.visitJumpInsn(Opcodes.IFNULL, nullLabel);
 
                                 // return String.valueOf(o);
-                                mv.visitVarInsn(Opcodes.ALOAD, 2);
-                                mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/String", "valueOf", "(Ljava/lang/Object;)Ljava/lang/String;", false);
-                                mv.visitInsn(Opcodes.ARETURN);
+                                output.visitVarInsn(Opcodes.ALOAD, 2);
+                                output.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/String", "valueOf", "(Ljava/lang/Object;)Ljava/lang/String;", false);
+                                output.visitInsn(Opcodes.ARETURN);
 
                                 // nullLabel: return null;
-                                mv.visitLabel(nullLabel);
-                                mv.visitInsn(Opcodes.ACONST_NULL);
-                                mv.visitInsn(Opcodes.ARETURN);
+                                output.visitLabel(nullLabel);
+                                output.visitInsn(Opcodes.ACONST_NULL);
+                                output.visitInsn(Opcodes.ARETURN);
 
-                                mv.visitMaxs(2, 3);
-                                mv.visitEnd();
+                                output.visitMaxs(0, 0);
+                                output.visitEnd();
                             }
                         };
                     }
                     return super.visitMethod(access, name, desc, sig, ex);
                 }
             };
-            cr.accept(cv, 0);
+            cr.accept(cv, ClassReader.EXPAND_FRAMES);
             byte[] patched = cw.toByteArray();
 
             targetClass.getParentFile().mkdirs();

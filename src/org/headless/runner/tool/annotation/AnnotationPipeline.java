@@ -2,6 +2,7 @@ package org.headless.runner.tool.annotation;
 
 import org.headless.runner.manifest.ApkInfo;
 import org.headless.runner.tool.BaseBundlePatcher;
+import org.headless.runner.tool.BytecodeFrameNormalizer;
 
 import java.io.File;
 import java.util.Map;
@@ -60,8 +61,10 @@ public class AnnotationPipeline {
         System.out.println("==================================================================");
 
         BaseBundlePatcher.patchIfNeeded(new File("lib/android-all-10.jar"), new File("bin"));
+        BytecodeFrameNormalizer.normalizeTo(new File("lib/android-all-10.jar"), new File("lib/android-all-10-framed.jar"));
 
         File finalJar = ensureAnnotationsInjected(apk, inJar, outJar, storage, null);
+        BytecodeFrameNormalizer.normalizeInPlace(finalJar);
         System.out.println("[+] Done. Output jar: " + finalJar.getAbsolutePath());
     }
 }

@@ -300,21 +300,26 @@ public class ActivityStack {
                 }
             } catch (Throwable ignored) {}
 
-            // 2. Execute pending Fragment transactions if FragmentActivity
-            if (top instanceof androidx.fragment.app.FragmentActivity) {
-                try {
-                    ((androidx.fragment.app.FragmentActivity) top).getSupportFragmentManager().executePendingTransactions();
-                } catch (Throwable ignored) {}
-            }
-
-            // 3. Force ViewPager populate() — no drawing pass in headless mode means
+            // 2. Force ViewPager populate() — no drawing pass in headless mode means
             //    onMeasure/onLayout never fires, so pager children stay at zero.
             //    ViewPagerPopulator is generic: walks the full view tree and calls
             //    populate() via reflection on every ViewPager subclass it finds.
+            //    populate()/instantiateItem() queues FragmentManager transactions
+            //    as a side effect, so this MUST run before the transactions below
+            //    are flushed, or the queued work from populate() never runs.
             try {
                 org.headless.runner.ui.ViewPagerPopulator.populateAll(top);
             } catch (Throwable vpe) {
                 System.err.println("[-] [ViewPagerPopulator] Error: " + vpe.getMessage());
+            }
+
+            // 3. Execute pending Fragment transactions if FragmentActivity — run
+            //    AFTER populate() above so transactions it just queued are
+            //    actually flushed before the measure/layout/draw pass below.
+            if (top instanceof androidx.fragment.app.FragmentActivity) {
+                try {
+                    ((androidx.fragment.app.FragmentActivity) top).getSupportFragmentManager().executePendingTransactions();
+                } catch (Throwable ignored) {}
             }
 
             if (mBaseContext != null) {

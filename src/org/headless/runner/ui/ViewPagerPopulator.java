@@ -43,6 +43,10 @@ public class ViewPagerPopulator {
             populateViewPager(activity, view);
         }
 
+        if (ReactViewPopulator.isReactRootView(view) && view instanceof ViewGroup) {
+            ReactViewPopulator.populateIfEmpty(activity, (ViewGroup) view);
+        }
+
         if (view instanceof ViewGroup) {
             ViewGroup vg = (ViewGroup) view;
             for (int i = 0; i < vg.getChildCount(); i++) {

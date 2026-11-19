@@ -130,7 +130,7 @@ public class HeadlessScreenCapture {
                 android.graphics.Canvas androidCanvas = new android.graphics.Canvas(g2, DEFAULT_WIDTH, DEFAULT_HEIGHT);
                 decor.draw(androidCanvas);
             } catch (Throwable t) {
-                // Ignore any drawing exceptions and let spatial renderer provide fallback
+                System.err.println("[-] [HeadlessScreenCapture] decor.draw() error: " + t.getClass().getName() + ": " + t.getMessage());
             }
             renderViewSpatial(decor, 0, 0, g2, hitTargets, nodes, 0, activity);
         }
@@ -142,15 +142,9 @@ public class HeadlessScreenCapture {
             sCurrentNodes.addAll(nodes);
         }
 
-        // 4. System Navigation Bar (Bottom 1860 to 1920px)
-        g2.setColor(new Color(0xF8, 0xFA, 0xFC));
-        g2.fillRect(0, DEFAULT_HEIGHT - 60, DEFAULT_WIDTH, 60);
-        g2.setColor(new Color(0xE2, 0xE8, 0xF0));
-        g2.drawLine(0, DEFAULT_HEIGHT - 60, DEFAULT_WIDTH, DEFAULT_HEIGHT - 60);
-
-        // Centered Android home gesture pill bar
-        g2.setColor(new Color(0x94, 0xA3, 0xB8));
-        g2.fill(new RoundRectangle2D.Float(DEFAULT_WIDTH / 2f - 90, DEFAULT_HEIGHT - 34, 180, 8, 4, 4));
+        // 4. System Navigation Bar (Subtle floating gesture pill)
+        g2.setColor(new Color(0x64, 0x74, 0x8B, 180));
+        g2.fill(new RoundRectangle2D.Float(DEFAULT_WIDTH / 2f - 90, DEFAULT_HEIGHT - 24, 180, 6, 3, 3));
 
         g2.dispose();
         return image;
@@ -186,6 +180,12 @@ public class HeadlessScreenCapture {
                 g2.setColor(new Color(color, true));
                 g2.fillRect(x, y, w, h);
             }
+        } else if (bg != null) {
+            try {
+                android.graphics.Canvas bgCanvas = new android.graphics.Canvas(g2, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+                bg.setBounds(x, y, x + w, y + h);
+                bg.draw(bgCanvas);
+            } catch (Throwable ignored) {}
         } else if (isClickable && w > 150 && h > 60 && !(view instanceof ViewGroup)) {
             // Clickable surface styling
             g2.setColor(new Color(0xF8, 0xFA, 0xFC));
@@ -250,8 +250,15 @@ public class HeadlessScreenCapture {
 
         // C. ImageView Rendering
         if (view instanceof ImageView) {
-            // Outline boundary for genuine image placeholder if no drawable
-            if (view.getBackground() == null) {
+            ImageView iv = (ImageView) view;
+            Drawable d = iv.getDrawable();
+            if (d != null) {
+                try {
+                    android.graphics.Canvas ivCanvas = new android.graphics.Canvas(g2, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+                    d.setBounds(x, y, x + w, y + h);
+                    d.draw(ivCanvas);
+                } catch (Throwable ignored) {}
+            } else if (view.getBackground() == null) {
                 g2.setColor(new Color(0xF1, 0xF5, 0xF9));
                 g2.fill(new RoundRectangle2D.Float(x, y, w, h, 8, 8));
             }

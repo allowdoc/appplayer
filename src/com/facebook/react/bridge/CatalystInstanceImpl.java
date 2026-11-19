@@ -165,6 +165,12 @@ public class CatalystInstanceImpl implements CatalystInstance {
         if ("AppRegistry".equals(module)) {
             if ("runApplication".equals(method)) {
                 System.out.println("[+] [CatalystInstanceImpl] AppRegistry.runApplication dispatched! Application live on React root view.");
+                try {
+                    android.app.Activity top = org.headless.runner.core.ActivityStack.getInstance().getTopActivity();
+                    if (top != null) {
+                        org.headless.runner.ui.ViewPagerPopulator.populateAll(top);
+                    }
+                } catch (Throwable ignored) {}
             } else if ("startHeadlessTask".equals(method)) {
                 System.out.println("[+] [CatalystInstanceImpl] AppRegistry.startHeadlessTask dispatched! Headless JS task executing.");
             }

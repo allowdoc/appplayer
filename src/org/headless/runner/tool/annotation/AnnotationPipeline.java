@@ -1,6 +1,7 @@
 package org.headless.runner.tool.annotation;
 
 import org.headless.runner.manifest.ApkInfo;
+import org.headless.runner.tool.BaseBundlePatcher;
 
 import java.io.File;
 import java.util.Map;
@@ -57,6 +58,8 @@ public class AnnotationPipeline {
         System.out.println("==================================================================");
         System.out.println("            UNIVERSAL ANDROID ANNOTATION RECOVERY TOOL            ");
         System.out.println("==================================================================");
+
+        BaseBundlePatcher.patchIfNeeded(new File("lib/android-all-10.jar"), new File("bin"));
 
         File finalJar = ensureAnnotationsInjected(apk, inJar, outJar, storage, null);
         System.out.println("[+] Done. Output jar: " + finalJar.getAbsolutePath());

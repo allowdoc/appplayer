@@ -122,32 +122,29 @@ public class NetworkInstrumenter {
     // Retrofit BaseUrl Diagnostic Logging (ASM-injected into NetworkManager)
     // -------------------------------------------------------------------------
 
-    public static void logCreateService(Class<?> serviceClass, Object profile, Object retrofitBuilder) {
+    public static void logCreateService(Class<?> serviceClass, Object requestObj, Object profileObj) {
         try {
             String serviceName = serviceClass != null ? serviceClass.getName() : "null";
-            String profileName = profile != null ? profile.toString() : "null";
-
+            String profileName = profileObj != null ? profileObj.toString() : "null";
             String baseUrlStr = "<unresolved>";
-            if (retrofitBuilder != null) {
+            String endpointStr = null;
+
+            if (requestObj != null) {
                 try {
-                    java.lang.reflect.Field buField = retrofitBuilder.getClass().getDeclaredField("baseUrl");
-                    buField.setAccessible(true);
-                    Object bu = buField.get(retrofitBuilder);
-                    baseUrlStr = bu != null ? bu.toString() : "null";
-                } catch (Throwable t) {
-                    try {
-                        for (java.lang.reflect.Field f : retrofitBuilder.getClass().getDeclaredFields()) {
-                            if (f.getType().getName().contains("HttpUrl")) {
-                                f.setAccessible(true);
-                                Object bu = f.get(retrofitBuilder);
-                                if (bu != null) {
-                                    baseUrlStr = bu.toString();
-                                    break;
-                                }
-                            }
-                        }
-                    } catch (Throwable ignored) {}
-                }
+                    Method getBaseUrlMethod = requestObj.getClass().getMethod("getbaseUrl");
+                    Object bu = getBaseUrlMethod.invoke(requestObj);
+                    if (bu != null && !bu.toString().isEmpty()) {
+                        baseUrlStr = bu.toString();
+                    }
+                } catch (Throwable ignored) {}
+
+                try {
+                    Method getEndpointMethod = requestObj.getClass().getMethod("getEndpoint");
+                    Object ep = getEndpointMethod.invoke(requestObj);
+                    if (ep != null) {
+                        endpointStr = ep.toString();
+                    }
+                } catch (Throwable ignored) {}
             }
 
             StackTraceElement caller = null;
@@ -166,6 +163,9 @@ public class NetworkInstrumenter {
             System.out.println("    |-- Target Service : " + serviceName);
             System.out.println("    |-- RetrofitProfile: " + profileName);
             System.out.println("    |-- BaseUrl Value  : \"" + baseUrlStr + "\"");
+            if (endpointStr != null && !endpointStr.isEmpty()) {
+                System.out.println("    |-- Endpoint       : \"" + endpointStr + "\"");
+            }
             System.out.println("    |-- Caller Source  : " + (caller != null ? caller.toString() : "unknown"));
 
         } catch (Throwable t) {

@@ -105,27 +105,6 @@ public class InjectAnnotations {
                         } catch (Throwable t) {
                             System.err.println("[-] Error patching BugsnagClient: " + t.getMessage());
                         }
-                    } else if (className.startsWith("com/swmansion/") ||
-                            className.startsWith("com/facebook/react/modules/blob/") ||
-                            "com/facebook/react/devsupport/InspectorFlags".equals(className)) {
-                        // Strip ACC_NATIVE and stub method bodies to prevent UnsatisfiedLinkError across pure JVM
-                        try (InputStream is = jar.getInputStream(entry)) {
-                            byte[] classBytes = is.readAllBytes();
-                            byte[] patchedBytes = stubNativeMethods(classBytes);
-                            if (cam != null) {
-                                patchedBytes = patchClass(patchedBytes, cam, interfaceSet);
-                            }
-
-                            JarEntry newEntry = new JarEntry(name);
-                            newEntry.setTime(entry.getTime());
-                            jos.putNextEntry(newEntry);
-                            jos.write(patchedBytes);
-                            jos.closeEntry();
-                            patchedCount++;
-                            continue;
-                        } catch (Throwable t) {
-                            System.err.println("[-] Error stubbing native methods for " + className + ": " + t.getMessage());
-                        }
                     } else if (className.startsWith("com/facebook/react/") && (
                             className.endsWith("ReactModule") ||
                             className.endsWith("ReactMethod") ||
@@ -147,6 +126,35 @@ public class InjectAnnotations {
                             continue;
                         } catch (Throwable t) {
                             System.err.println("[-] Error patching React annotation " + className + ": " + t.getMessage());
+                        }
+                    } else if (className.startsWith("com/swmansion/") ||
+                            className.startsWith("com/facebook/") ||
+                            "com/facebook/react/devsupport/InspectorFlags".equals(className)) {
+                        // Strip ACC_NATIVE and stub method bodies to prevent UnsatisfiedLinkError across pure JVM
+                        try (InputStream is = jar.getInputStream(entry)) {
+                            byte[] classBytes = is.readAllBytes();
+                            byte[] patchedBytes = classBytes;
+
+                            if ("com/facebook/react/uimanager/NativeViewHierarchyManager".equals(className)) {
+                                patchedBytes = stripFinalFromFields(patchedBytes);
+                            }
+
+                            patchedBytes = stubNativeMethods(patchedBytes);
+                            patchedBytes = patchReflectionHooks(patchedBytes);
+
+                            if (cam != null) {
+                                patchedBytes = patchClass(patchedBytes, cam, interfaceSet);
+                            }
+
+                            JarEntry newEntry = new JarEntry(name);
+                            newEntry.setTime(entry.getTime());
+                            jos.putNextEntry(newEntry);
+                            jos.write(patchedBytes);
+                            jos.closeEntry();
+                            patchedCount++;
+                            continue;
+                        } catch (Throwable t) {
+                            System.err.println("[-] Error stubbing native methods for " + className + ": " + t.getMessage());
                         }
                     } else if (cam != null) {
                         try (InputStream is = jar.getInputStream(entry)) {
@@ -387,7 +395,7 @@ public class InjectAnnotations {
         if (interfaceSet == null || interfaceSet.isEmpty()) return null;
         boolean[] modified = new boolean[1];
         ClassReader cr = new ClassReader(classBytes);
-        ClassWriter cw = new ClassWriter(cr, 0);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
         ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
@@ -637,7 +645,7 @@ public class InjectAnnotations {
                             mv.visitInsn(Opcodes.IRETURN);
                             break;
                         case Type.LONG:
-                            mv.visitInsn(Opcodes.LCONST_0);
+                            mv.visitInsn(Opcodes.LCONST_1);
                             mv.visitInsn(Opcodes.LRETURN);
                             break;
                         case Type.FLOAT:
@@ -659,6 +667,27 @@ public class InjectAnnotations {
                                 mv.visitInsn(Opcodes.ARETURN);
                             }
                             break;
+                        case Type.ARRAY:
+                            Type elemType = ret.getElementType();
+                            mv.visitInsn(Opcodes.ICONST_0);
+                            if (elemType.getSort() == Type.OBJECT) {
+                                mv.visitTypeInsn(Opcodes.ANEWARRAY, elemType.getInternalName());
+                            } else {
+                                int newArrayOp = Opcodes.T_INT;
+                                switch (elemType.getSort()) {
+                                    case Type.BOOLEAN: newArrayOp = Opcodes.T_BOOLEAN; break;
+                                    case Type.BYTE: newArrayOp = Opcodes.T_BYTE; break;
+                                    case Type.CHAR: newArrayOp = Opcodes.T_CHAR; break;
+                                    case Type.SHORT: newArrayOp = Opcodes.T_SHORT; break;
+                                    case Type.INT: newArrayOp = Opcodes.T_INT; break;
+                                    case Type.LONG: newArrayOp = Opcodes.T_LONG; break;
+                                    case Type.FLOAT: newArrayOp = Opcodes.T_FLOAT; break;
+                                    case Type.DOUBLE: newArrayOp = Opcodes.T_DOUBLE; break;
+                                }
+                                mv.visitIntInsn(Opcodes.NEWARRAY, newArrayOp);
+                            }
+                            mv.visitInsn(Opcodes.ARETURN);
+                            break;
                         default:
                             mv.visitInsn(Opcodes.ACONST_NULL);
                             mv.visitInsn(Opcodes.ARETURN);
@@ -669,6 +698,45 @@ public class InjectAnnotations {
                     return null;
                 }
                 return super.visitMethod(access, name, desc, sig, ex);
+            }
+        };
+        cr.accept(cv, 0);
+        return cw.toByteArray();
+    }
+
+    private static byte[] patchReflectionHooks(byte[] classBytes) {
+        ClassReader cr = new ClassReader(classBytes);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitMethodInsn(int opcode, String owner, String mName, String mDesc, boolean isInterface) {
+                        if (opcode == Opcodes.INVOKEVIRTUAL && "java/lang/Class".equals(owner) &&
+                                "getDeclaredField".equals(mName) && "(Ljava/lang/String;)Ljava/lang/reflect/Field;".equals(mDesc)) {
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC, "org/headless/runner/core/ReflectionHooks",
+                                    "getDeclaredField", "(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;", false);
+                            return;
+                        }
+                        super.visitMethodInsn(opcode, owner, mName, mDesc, isInterface);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        return cw.toByteArray();
+    }
+
+    private static byte[] stripFinalFromFields(byte[] classBytes) {
+        ClassReader cr = new ClassReader(classBytes);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+                int newAccess = access & ~Opcodes.ACC_FINAL;
+                return super.visitField(newAccess, name, descriptor, signature, value);
             }
         };
         cr.accept(cv, 0);

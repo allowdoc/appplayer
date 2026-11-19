@@ -244,6 +244,12 @@ public class AppLauncher {
 
             // 8. Launch Main Activity (Headless Lifecycle)
             String mainActivityName = info.getMainActivity();
+            for (int i = 0; i < args.length; i++) {
+                if ("--activity".equalsIgnoreCase(args[i]) && i + 1 < args.length) {
+                    mainActivityName = args[i + 1];
+                    break;
+                }
+            }
             if (mainActivityName != null && !mainActivityName.isEmpty()) {
                 System.out.println("[*] [Step 7/7] Launching Main Activity: " + mainActivityName);
 

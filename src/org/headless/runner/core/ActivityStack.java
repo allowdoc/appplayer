@@ -278,6 +278,12 @@ public class ActivityStack {
                     rvField.set(attachInfo, decor);
                 } catch (Throwable ignored) {}
 
+                try {
+                    java.lang.reflect.Field wtField = attachInfoCls.getDeclaredField("mWindowToken");
+                    wtField.setAccessible(true);
+                    wtField.set(attachInfo, new Binder("window_token_" + activity.getClass().getSimpleName()));
+                } catch (Throwable ignored) {}
+
                 java.lang.reflect.Method dispatchAttached = android.view.View.class.getDeclaredMethod("dispatchAttachedToWindow", attachInfoCls, int.class);
                 dispatchAttached.setAccessible(true);
                 dispatchAttached.invoke(decor, attachInfo, 0);

@@ -32,6 +32,15 @@ public abstract class m {
     public static Method h;
     public static Method i;
 
+    static {
+        try {
+            java.lang.reflect.Field unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            unsafeField.setAccessible(true);
+            sun.misc.Unsafe unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+            b = (t) unsafe.allocateInstance(t.class);
+        } catch (Throwable ignored) {}
+    }
+
     public static void a(Closeable closeable) {
         if (closeable != null) {
             try {

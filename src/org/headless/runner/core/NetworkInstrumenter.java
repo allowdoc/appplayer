@@ -7,13 +7,14 @@ import java.lang.reflect.Proxy;
 /**
  * Generic engine-level instrumentation for network calls.
  *
- * Two responsibilities:
+ * Responsibilities:
  *  1. logCreateService — logs Retrofit baseUrl resolution (called by ASM-injected
  *     bytecode in NetworkManager.createService).
- *  2. installEventListenerFactory — installs a diagnostic OkHttp EventListener
- *     on every OkHttpClient the app builds, so we capture the real IOException
- *     (SSLHandshakeException, UnknownHostException, ConnectException, etc.)
- *     before the app's generic error mapper swallows it.
+ *  2. installDiagnosticInterceptor — installs a diagnostic OkHttp Interceptor on
+ *     every OkHttpClient the app builds, so we capture the real IOException
+ *     (SSLHandshakeException, UnknownHostException, SocketTimeoutException, etc.)
+ *     with its raw underlying cause and stack trace before any app error mapper
+ *     swallows it.
  *     Uses java.lang.reflect.Proxy to avoid any direct dependency on okhttp3
  *     compile-time classes.
  */
@@ -21,215 +22,154 @@ public class NetworkInstrumenter {
 
     private static final String NET_TAG = "[NetworkEngine]";
 
-    // -------------------------------------------------------------------------
-    // Bug 2 Fix: Generic OkHttp EventListener via Proxy (reflection-only, no
-    // compile-time dependency on okhttp3).
-    // -------------------------------------------------------------------------
-
-    private static class NetworkEventHandler implements InvocationHandler {
-
+    /**
+     * Interceptor proxy handler that intercepts every single OkHttp request/response
+     * and logs failures with root cause and stack trace.
+     */
+    private static class DiagnosticInterceptorHandler implements InvocationHandler {
         @Override
-        public Object invoke(Object proxy, Method method, Object[] args) {
-            String methodName = method.getName();
-            try {
-                switch (methodName) {
-                    case "create":
-                        // EventListener.Factory.create(Call) -> return an EventListener proxy
-                        return makeEventListenerProxy();
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            if ("intercept".equals(method.getName()) && args != null && args.length == 1) {
+                Object chain = args[0];
+                Object request = chain.getClass().getMethod("request").invoke(chain);
+                Object url = request.getClass().getMethod("url").invoke(request);
+                Object httpMethod = request.getClass().getMethod("method").invoke(request);
 
-                    case "connectFailed":
-                        // connectFailed(Call, InetSocketAddress, Proxy, Protocol, IOException)
-                        if (args != null && args.length >= 5 && args[4] instanceof Throwable) {
-                            Throwable ioe = (Throwable) args[4];
-                            String addr = args[1] != null ? args[1].toString() : "unknown";
-                            System.err.println("[-] " + NET_TAG + " connectFailed to " + addr
-                                    + " | " + ioe.getClass().getName() + ": " + ioe.getMessage());
-                            logCauseChain(ioe);
-                        }
-                        return null;
+                System.out.println("[+] " + NET_TAG + " ---> " + httpMethod + " " + url);
+                long startMs = System.currentTimeMillis();
+                try {
+                    Object response = chain.getClass().getMethod("proceed", request.getClass()).invoke(chain, request);
+                    long durationMs = System.currentTimeMillis() - startMs;
+                    Object code = response.getClass().getMethod("code").invoke(response);
+                    System.out.println("[+] " + NET_TAG + " <--- " + code + " " + url + " (" + durationMs + "ms)");
+                    return response;
+                } catch (Throwable t) {
+                    long durationMs = System.currentTimeMillis() - startMs;
+                    Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null)
+                            ? t.getCause() : t;
 
-                    case "callFailed":
-                        // callFailed(Call, IOException)
-                        if (args != null && args.length >= 2 && args[1] instanceof Throwable) {
-                            Throwable ioe = (Throwable) args[1];
-                            String url = "unknown";
-                            try {
-                                Object request = args[0].getClass().getMethod("request").invoke(args[0]);
-                                url = request.getClass().getMethod("url").invoke(request).toString();
-                            } catch (Throwable ignored) {}
-                            System.err.println("[-] " + NET_TAG + " callFailed url=" + url
-                                    + " | " + ioe.getClass().getName() + ": " + ioe.getMessage());
-                            logCauseChain(ioe);
-                            logStackTop(ioe, 10);
-                        }
-                        return null;
+                    System.err.println("[-] " + NET_TAG + " <--- HTTP FAILED (" + durationMs + "ms): "
+                            + httpMethod + " " + url);
+                    System.err.println("[-] " + NET_TAG + " Underlying Exception: "
+                            + cause.getClass().getName() + ": " + cause.getMessage());
 
-                    case "connectionAcquired":
-                        // connectionAcquired(Call, Connection)
-                        if (args != null && args.length >= 2 && args[1] != null) {
-                            try {
-                                Object socket = args[1].getClass().getMethod("socket").invoke(args[1]);
-                                if (socket != null) {
-                                    Object remoteAddr = socket.getClass()
-                                            .getMethod("getRemoteSocketAddress").invoke(socket);
-                                    System.out.println("[+] " + NET_TAG + " connectionAcquired: " + remoteAddr);
-                                }
-                            } catch (Throwable ignored) {}
-                        }
-                        return null;
+                    Throwable current = cause.getCause();
+                    while (current != null) {
+                        System.err.println("    caused by: " + current.getClass().getName() + ": " + current.getMessage());
+                        current = current.getCause();
+                    }
 
-                    default:
-                        // All other EventListener methods — safe no-op defaults
-                        Class<?> rt = method.getReturnType();
-                        if (rt == boolean.class) return false;
-                        if (rt == int.class)     return 0;
-                        if (rt == long.class)    return 0L;
-                        return null;
+                    StackTraceElement[] frames = cause.getStackTrace();
+                    int maxFrames = Math.min(frames != null ? frames.length : 0, 10);
+                    for (int i = 0; i < maxFrames; i++) {
+                        System.err.println("    at " + frames[i]);
+                    }
+
+                    // Propagate the exception so the app's standard flow continues
+                    throw cause;
                 }
-            } catch (Throwable t) {
-                // Never let our instrumentation crash the app
-                return null;
             }
-        }
 
-        private static void logCauseChain(Throwable t) {
-            Throwable cause = t.getCause();
-            while (cause != null) {
-                System.err.println("    caused by: " + cause.getClass().getName() + ": " + cause.getMessage());
-                cause = cause.getCause();
+            if ("toString".equals(method.getName())) {
+                return "DiagnosticInterceptor";
             }
-        }
-
-        private static void logStackTop(Throwable t, int limit) {
-            StackTraceElement[] frames = t.getStackTrace();
-            int n = Math.min(frames != null ? frames.length : 0, limit);
-            for (int i = 0; i < n; i++) {
-                System.err.println("    at " + frames[i]);
+            if ("hashCode".equals(method.getName())) {
+                return System.identityHashCode(proxy);
             }
-        }
-    }
+            if ("equals".equals(method.getName())) {
+                return proxy == (args != null && args.length > 0 ? args[0] : null);
+            }
 
-    private static final NetworkEventHandler HANDLER = new NetworkEventHandler();
-
-    /** Create a Proxy implementing okhttp3.EventListener. */
-    private static Object makeEventListenerProxy() {
-        try {
-            Class<?> listenerClass = Class.forName("okhttp3.EventListener");
-            return Proxy.newProxyInstance(
-                    listenerClass.getClassLoader(),
-                    new Class[]{listenerClass},
-                    HANDLER);
-        } catch (Throwable t) {
-            System.err.println("[-] " + NET_TAG + " Could not create EventListener proxy: " + t.getMessage());
-            return null;
-        }
-    }
-
-    /** Create a Proxy implementing okhttp3.EventListener$Factory. */
-    private static Object makeEventListenerFactoryProxy() {
-        try {
-            Class<?> factoryClass = Class.forName("okhttp3.EventListener$Factory");
-            return Proxy.newProxyInstance(
-                    factoryClass.getClassLoader(),
-                    new Class[]{factoryClass},
-                    HANDLER);
-        } catch (Throwable t) {
-            System.err.println("[-] " + NET_TAG + " Could not create EventListener.Factory proxy: " + t.getMessage());
             return null;
         }
     }
 
     /**
-     * Called by ASM-injected bytecode at the start of OkHttpClient.Builder.build().
-     * Installs our diagnostic EventListener.Factory so we see the real IOException
-     * before the app's error mapper swallows it. Generic — no app-specific code.
+     * Installs a diagnostic OkHttp Interceptor on the OkHttpClient.Builder.
+     * Called by ASM bytecode injected into okhttp3.OkHttpClient$Builder.build().
      */
-    public static void installEventListenerFactory(Object okHttpClientBuilder) {
-        if (okHttpClientBuilder == null) return;
+    public static void installDiagnosticInterceptor(Object builder) {
+        if (builder == null) return;
         try {
-            Class<?> builderClass = okHttpClientBuilder.getClass();
+            Method interceptorsMethod = builder.getClass().getMethod("interceptors");
+            @SuppressWarnings("unchecked")
+            java.util.List<Object> list = (java.util.List<Object>) interceptorsMethod.invoke(builder);
+            if (list == null) return;
 
-            // Check if the app already set a custom factory
-            java.lang.reflect.Field factoryField = null;
-            Class<?> cls = builderClass;
-            while (cls != null) {
-                try {
-                    factoryField = cls.getDeclaredField("eventListenerFactory");
-                    break;
-                } catch (NoSuchFieldException ignored) {
-                    cls = cls.getSuperclass();
-                }
-            }
+            Class<?> interceptorCls = Class.forName("okhttp3.Interceptor");
+            Object interceptorProxy = Proxy.newProxyInstance(
+                    interceptorCls.getClassLoader(),
+                    new Class<?>[]{interceptorCls},
+                    new DiagnosticInterceptorHandler()
+            );
 
-            boolean alreadyCustom = false;
-            if (factoryField != null) {
-                factoryField.setAccessible(true);
-                Object existing = factoryField.get(okHttpClientBuilder);
-                if (existing != null) {
-                    // OkHttp's default is a singleton no-op from EventListener.Companion
-                    // If it's a Proxy or non-EventListener class, the app set a custom one
-                    alreadyCustom = Proxy.isProxyClass(existing.getClass()) ||
-                            (!existing.getClass().getName().contains("EventListener"));
-                }
-            }
-
-            if (!alreadyCustom) {
-                Object factoryProxy = makeEventListenerFactoryProxy();
-                if (factoryProxy != null) {
-                    // Look up the eventListenerFactory(Factory) setter on the builder
-                    Method setter = null;
-                    for (Method m : builderClass.getMethods()) {
-                        if ("eventListenerFactory".equals(m.getName()) &&
-                                m.getParameterCount() == 1) {
-                            setter = m;
-                            break;
-                        }
-                    }
-                    if (setter != null) {
-                        setter.invoke(okHttpClientBuilder, factoryProxy);
-                        System.out.println("[+] " + NET_TAG +
-                                " Installed diagnostic EventListener on OkHttpClient.Builder.");
-                    }
-                }
-            }
+            // Add at index 0 so it runs first on all outgoing calls
+            list.add(0, interceptorProxy);
+            System.out.println("[+] " + NET_TAG + " Diagnostic Interceptor installed on OkHttpClient$Builder");
         } catch (Throwable t) {
-            System.err.println("[-] " + NET_TAG + " Could not install EventListener: " +
-                    t.getClass().getName() + ": " + t.getMessage());
+            System.err.println("[-] " + NET_TAG + " Could not install diagnostic interceptor: " + t.getMessage());
         }
     }
 
+    /**
+     * Backward-compatible alias for existing ASM hook in InjectAnnotations.
+     */
+    public static void installEventListenerFactory(Object builder) {
+        installDiagnosticInterceptor(builder);
+    }
+
     // -------------------------------------------------------------------------
-    // Pre-existing: Retrofit createService instrumentation
+    // Retrofit BaseUrl Diagnostic Logging (ASM-injected into NetworkManager)
     // -------------------------------------------------------------------------
 
-    public static void logCreateService(Class<?> serviceClass, Object request, Object profile) {
-        String serviceName = (serviceClass != null) ? serviceClass.getName() : "null";
-        String profileName = (profile != null) ? profile.toString() : "null";
-        String baseUrl = "null";
+    public static void logCreateService(Class<?> serviceClass, Object profile, Object retrofitBuilder) {
+        try {
+            String serviceName = serviceClass != null ? serviceClass.getName() : "null";
+            String profileName = profile != null ? profile.toString() : "null";
 
-        if (request != null) {
-            try {
-                Method m = request.getClass().getMethod("getbaseUrl");
-                Object val = m.invoke(request);
-                baseUrl = (val != null) ? val.toString() : "null";
-            } catch (Throwable ignored) {}
-        }
-
-        String callerInfo = "unknown";
-        StackTraceElement[] st = Thread.currentThread().getStackTrace();
-        for (int i = 2; i < st.length; i++) {
-            String cn = st[i].getClassName();
-            if (!cn.startsWith("org.headless.runner") && !cn.startsWith("com.network.NetworkManager")) {
-                callerInfo = cn + "." + st[i].getMethodName() +
-                        "(" + st[i].getFileName() + ":" + st[i].getLineNumber() + ")";
-                break;
+            String baseUrlStr = "<unresolved>";
+            if (retrofitBuilder != null) {
+                try {
+                    java.lang.reflect.Field buField = retrofitBuilder.getClass().getDeclaredField("baseUrl");
+                    buField.setAccessible(true);
+                    Object bu = buField.get(retrofitBuilder);
+                    baseUrlStr = bu != null ? bu.toString() : "null";
+                } catch (Throwable t) {
+                    try {
+                        for (java.lang.reflect.Field f : retrofitBuilder.getClass().getDeclaredFields()) {
+                            if (f.getType().getName().contains("HttpUrl")) {
+                                f.setAccessible(true);
+                                Object bu = f.get(retrofitBuilder);
+                                if (bu != null) {
+                                    baseUrlStr = bu.toString();
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                }
             }
-        }
 
-        System.out.println("[+] [NetworkManager.createService] Invoking Retrofit.baseUrl(...)");
-        System.out.println("    |-- Target Service : " + serviceName);
-        System.out.println("    |-- RetrofitProfile: " + profileName);
-        System.out.println("    |-- BaseUrl Value  : \"" + baseUrl + "\"");
-        System.out.println("    |-- Caller Source  : " + callerInfo);
+            StackTraceElement caller = null;
+            StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+            for (int i = 2; i < stack.length; i++) {
+                String cn = stack[i].getClassName();
+                if (!cn.equals(NetworkInstrumenter.class.getName()) &&
+                        !cn.contains("NetworkManager") &&
+                        !cn.contains("java.lang.reflect")) {
+                    caller = stack[i];
+                    break;
+                }
+            }
+
+            System.out.println("[+] [NetworkManager.createService] Invoking Retrofit.baseUrl(...)");
+            System.out.println("    |-- Target Service : " + serviceName);
+            System.out.println("    |-- RetrofitProfile: " + profileName);
+            System.out.println("    |-- BaseUrl Value  : \"" + baseUrlStr + "\"");
+            System.out.println("    |-- Caller Source  : " + (caller != null ? caller.toString() : "unknown"));
+
+        } catch (Throwable t) {
+            System.err.println("[-] [NetworkManager.createService] Instrumentation error: " + t.getMessage());
+        }
     }
 }

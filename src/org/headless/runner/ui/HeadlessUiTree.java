@@ -25,12 +25,12 @@ public class HeadlessUiTree {
         if (decor != null) {
             try {
                 org.headless.runner.core.ActivityStack.attachWindowIfNeeded(activity);
-                if (decor.getWidth() == 0 || decor.getHeight() == 0) {
-                    int wSpec = View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY);
-                    int hSpec = View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.EXACTLY);
-                    decor.measure(wSpec, hSpec);
-                    decor.layout(0, 0, 1080, 1920);
-                }
+                int w = decor.getWidth() > 0 ? decor.getWidth() : 1080;
+                int h = decor.getHeight() > 0 ? decor.getHeight() : 1920;
+                int wSpec = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY);
+                int hSpec = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY);
+                decor.measure(wSpec, hSpec);
+                decor.layout(0, 0, w, h);
             } catch (Throwable ignored) {}
         }
         StringBuilder sb = new StringBuilder();
@@ -85,6 +85,19 @@ public class HeadlessUiTree {
                 if (val instanceof CharSequence && ((CharSequence) val).length() > 0) {
                     sb.append(" text=\"").append(val.toString().replace("\n", "\\n")).append("\"");
                 }
+            } catch (Throwable ignored) {}
+        }
+
+        // Ensure visible view is measured and laid out if bounds are 0
+        if (v.getVisibility() != View.GONE && v.getWidth() == 0 && v.getHeight() == 0 && v.getRight() == 0 && v.getBottom() == 0) {
+            View parent = v.getParent() instanceof View ? (View) v.getParent() : null;
+            int pw = parent != null && parent.getWidth() > 0 ? parent.getWidth() : 1082;
+            int ph = parent != null && parent.getHeight() > 0 ? parent.getHeight() : 1920;
+            try {
+                int wSpec = View.MeasureSpec.makeMeasureSpec(pw, View.MeasureSpec.EXACTLY);
+                int hSpec = View.MeasureSpec.makeMeasureSpec(ph, View.MeasureSpec.EXACTLY);
+                v.measure(wSpec, hSpec);
+                v.layout(0, 0, pw, ph);
             } catch (Throwable ignored) {}
         }
 

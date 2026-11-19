@@ -17,6 +17,28 @@ public class InjectAnnotations {
         long start = System.currentTimeMillis();
         System.out.println("[*] [AnnotationInjector] Patching " + annotationsMap.size() + " class(es) into " + outputJar.getName() + " with COMPUTE_FRAMES...");
 
+        // Generic Java 8 interface method call verifier fix:
+        // Collect all interface names so that any INVOKESTATIC targeting an interface
+        // has its itf flag set to true (preventing IncompatibleClassChangeError)
+        Set<String> interfaceSet = new HashSet<>();
+        try {
+            try (JarFile scanJar = new JarFile(inputJar)) {
+                Enumeration<JarEntry> en = scanJar.entries();
+                while (en.hasMoreElements()) {
+                    JarEntry je = en.nextElement();
+                    if (je.getName().endsWith(".class")) {
+                        try (InputStream is = scanJar.getInputStream(je)) {
+                            ClassReader cr = new ClassReader(is);
+                            if ((cr.getAccess() & Opcodes.ACC_INTERFACE) != 0) {
+                                interfaceSet.add(cr.getClassName());
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        System.out.println("[+] [AnnotationInjector] Discovered " + interfaceSet.size() + " interface(s) in APK jar for Java 8 bytecode alignment.");
+
         int patchedCount = 0;
         File tempOut = new File(outputJar.getAbsolutePath() + ".tmp");
         if (tempOut.exists()) tempOut.delete();
@@ -67,10 +89,26 @@ public class InjectAnnotations {
                         } catch (Throwable t) {
                             System.err.println("[-] Error patching OkHttpClient$Builder: " + t.getMessage());
                         }
+                    } else if ("com/bugsnag/android/t".equals(className)) {
+                        // Neutralize Bugsnag telemetry client methods to prevent NPE during lifecycle/setUserVisibleHint
+                        try (InputStream is = jar.getInputStream(entry)) {
+                            byte[] classBytes = is.readAllBytes();
+                            byte[] patchedBytes = patchBugsnagClient(classBytes);
+
+                            JarEntry newEntry = new JarEntry(name);
+                            newEntry.setTime(entry.getTime());
+                            jos.putNextEntry(newEntry);
+                            jos.write(patchedBytes);
+                            jos.closeEntry();
+                            patchedCount++;
+                            continue;
+                        } catch (Throwable t) {
+                            System.err.println("[-] Error patching BugsnagClient: " + t.getMessage());
+                        }
                     } else if (cam != null) {
                         try (InputStream is = jar.getInputStream(entry)) {
                             byte[] classBytes = is.readAllBytes();
-                            byte[] patchedBytes = patchClass(classBytes, cam);
+                            byte[] patchedBytes = patchClass(classBytes, cam, interfaceSet);
 
                             JarEntry newEntry = new JarEntry(name);
                             newEntry.setTime(entry.getTime());
@@ -82,6 +120,19 @@ public class InjectAnnotations {
                         } catch (Throwable t) {
                             System.err.println("[-] Error patching class " + className + ": " + t.getMessage());
                         }
+                    } else {
+                        // Check if class needs InterfaceMethodref bytecode fix
+                        try (InputStream is = jar.getInputStream(entry)) {
+                            byte[] classBytes = is.readAllBytes();
+                            byte[] patched = patchInterfaceStaticCalls(classBytes, interfaceSet);
+                            JarEntry newEntry = new JarEntry(name);
+                            newEntry.setTime(entry.getTime());
+                            jos.putNextEntry(newEntry);
+                            jos.write(patched != null ? patched : classBytes);
+                            jos.closeEntry();
+                            if (patched != null) patchedCount++;
+                            continue;
+                        } catch (Throwable ignored) {}
                     }
                 }
 
@@ -145,7 +196,7 @@ public class InjectAnnotations {
         return cw.toByteArray();
     }
 
-    private static byte[] patchClass(byte[] classBytes, ClassAnnotationModel cam) {
+    private static byte[] patchClass(byte[] classBytes, ClassAnnotationModel cam, Set<String> interfaceSet) {
         ClassReader cr = new ClassReader(classBytes);
         ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_FRAMES) {
             @Override
@@ -225,71 +276,102 @@ public class InjectAnnotations {
                 String effectiveSignature = (mam != null && mam.signature != null) ? mam.signature : signature;
                 MethodVisitor mv = super.visitMethod(access, name, descriptor, effectiveSignature, exceptions);
 
-                if (mam != null) {
-                    final MethodAnnotationModel targetMam = mam;
-                    return new MethodVisitor(Opcodes.ASM9, mv) {
-                        private boolean annotationsWritten = false;
+                final MethodAnnotationModel targetMam = mam;
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    private boolean annotationsWritten = false;
 
-                        private void ensureAnnotationsWritten() {
-                            if (annotationsWritten) return;
-                            annotationsWritten = true;
+                    private void ensureAnnotationsWritten() {
+                        if (annotationsWritten || targetMam == null) return;
+                        annotationsWritten = true;
 
-                            // 1. Method annotations
-                            for (AnnotationModel ma : targetMam.annotations) {
-                                RecoverAnnotations.applyRetrofitDefaults(ma);
-                                AnnotationVisitor av = super.visitAnnotation(ma.desc, ma.visible);
-                                if (av != null) {
-                                    for (Map.Entry<String, Object> e : ma.values.entrySet()) {
-                                        writeAnnotationElement(av, e.getKey(), e.getValue());
-                                    }
-                                    av.visitEnd();
+                        // 1. Method annotations
+                        for (AnnotationModel ma : targetMam.annotations) {
+                            RecoverAnnotations.applyRetrofitDefaults(ma);
+                            AnnotationVisitor av = super.visitAnnotation(ma.desc, ma.visible);
+                            if (av != null) {
+                                for (Map.Entry<String, Object> e : ma.values.entrySet()) {
+                                    writeAnnotationElement(av, e.getKey(), e.getValue());
                                 }
-                            }
-
-                            // 2. Parameter annotations
-                            for (Map.Entry<Integer, List<AnnotationModel>> pe : targetMam.paramAnnotations.entrySet()) {
-                                int pIdx = pe.getKey();
-                                for (AnnotationModel pa : pe.getValue()) {
-                                    RecoverAnnotations.applyRetrofitDefaults(pa);
-                                    AnnotationVisitor pav = super.visitParameterAnnotation(pIdx, pa.desc, pa.visible);
-                                    if (pav != null) {
-                                        for (Map.Entry<String, Object> e : pa.values.entrySet()) {
-                                            writeAnnotationElement(pav, e.getKey(), e.getValue());
-                                        }
-                                        pav.visitEnd();
-                                    }
-                                }
+                                av.visitEnd();
                             }
                         }
 
-                        @Override
-                        public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
-                            // If this annotation is already one of the recovered ones, drop it so we write fresh
+                        // 2. Parameter annotations
+                        for (Map.Entry<Integer, List<AnnotationModel>> pe : targetMam.paramAnnotations.entrySet()) {
+                            int pIdx = pe.getKey();
+                            for (AnnotationModel pa : pe.getValue()) {
+                                RecoverAnnotations.applyRetrofitDefaults(pa);
+                                AnnotationVisitor pav = super.visitParameterAnnotation(pIdx, pa.desc, pa.visible);
+                                if (pav != null) {
+                                    for (Map.Entry<String, Object> e : pa.values.entrySet()) {
+                                        writeAnnotationElement(pav, e.getKey(), e.getValue());
+                                    }
+                                    pav.visitEnd();
+                                }
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void visitMethodInsn(int opcode, String owner, String mName, String desc, boolean itf) {
+                        if (opcode == Opcodes.INVOKESTATIC && !itf && interfaceSet.contains(owner)) {
+                            itf = true;
+                        }
+                        super.visitMethodInsn(opcode, owner, mName, desc, itf);
+                    }
+
+                    @Override
+                    public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+                        if (targetMam != null) {
                             for (AnnotationModel ma : targetMam.annotations) {
                                 if (ma.desc.equals(desc)) return null;
                             }
-                            return super.visitAnnotation(desc, visible);
                         }
+                        return super.visitAnnotation(desc, visible);
+                    }
 
-                        @Override
-                        public void visitCode() {
-                            ensureAnnotationsWritten();
-                            super.visitCode();
-                        }
+                    @Override
+                    public void visitCode() {
+                        ensureAnnotationsWritten();
+                        super.visitCode();
+                    }
 
-                        @Override
-                        public void visitEnd() {
-                            ensureAnnotationsWritten();
-                            super.visitEnd();
-                        }
-                    };
-                }
-                return mv;
+                    @Override
+                    public void visitEnd() {
+                        ensureAnnotationsWritten();
+                        super.visitEnd();
+                    }
+                };
             }
         };
 
         cr.accept(cv, 0);
         return cw.toByteArray();
+    }
+
+    private static byte[] patchInterfaceStaticCalls(byte[] classBytes, Set<String> interfaceSet) {
+        if (interfaceSet == null || interfaceSet.isEmpty()) return null;
+        boolean[] modified = new boolean[1];
+        ClassReader cr = new ClassReader(classBytes);
+        ClassWriter cw = new ClassWriter(cr, 0);
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitMethodInsn(int opcode, String owner, String mName, String desc, boolean itf) {
+                        if (opcode == Opcodes.INVOKESTATIC && !itf && interfaceSet.contains(owner)) {
+                            itf = true;
+                            modified[0] = true;
+                        }
+                        super.visitMethodInsn(opcode, owner, mName, desc, itf);
+                    }
+                };
+            }
+        };
+        cr.accept(cv, 0);
+        return modified[0] ? cw.toByteArray() : null;
     }
 
     private static void writeAnnotationElement(AnnotationVisitor av, String name, Object val) {
@@ -363,6 +445,58 @@ public class InjectAnnotations {
                     };
                 }
                 return mv;
+            }
+        };
+        cr.accept(cv, 0);
+        return cw.toByteArray();
+    }
+
+    private static byte[] patchBugsnagClient(byte[] classBytes) {
+        ClassReader cr = new ClassReader(classBytes);
+        ClassWriter cw = new ClassWriter(cr, ClassWriter.COMPUTE_MAXS);
+        ClassVisitor cv = new ClassVisitor(Opcodes.ASM9, cw) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
+                if ("<init>".equals(name)) {
+                    return super.visitMethod(access, name, desc, sig, ex);
+                }
+                MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
+                return new MethodVisitor(Opcodes.ASM9, mv) {
+                    @Override
+                    public void visitCode() {
+                        super.visitCode();
+                        Type ret = Type.getReturnType(desc);
+                        switch (ret.getSort()) {
+                            case Type.VOID:
+                                mv.visitInsn(Opcodes.RETURN);
+                                break;
+                            case Type.BOOLEAN:
+                            case Type.BYTE:
+                            case Type.CHAR:
+                            case Type.SHORT:
+                            case Type.INT:
+                                mv.visitInsn(Opcodes.ICONST_0);
+                                mv.visitInsn(Opcodes.IRETURN);
+                                break;
+                            case Type.LONG:
+                                mv.visitInsn(Opcodes.LCONST_0);
+                                mv.visitInsn(Opcodes.LRETURN);
+                                break;
+                            case Type.FLOAT:
+                                mv.visitInsn(Opcodes.FCONST_0);
+                                mv.visitInsn(Opcodes.FRETURN);
+                                break;
+                            case Type.DOUBLE:
+                                mv.visitInsn(Opcodes.DCONST_0);
+                                mv.visitInsn(Opcodes.DRETURN);
+                                break;
+                            default:
+                                mv.visitInsn(Opcodes.ACONST_NULL);
+                                mv.visitInsn(Opcodes.ARETURN);
+                                break;
+                        }
+                    }
+                };
             }
         };
         cr.accept(cv, 0);

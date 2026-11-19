@@ -2,6 +2,7 @@
 setlocal
 set JAVA_EXE=C:\Program Files\Android\Android Studio\jbr\bin\java.exe
 set RUNNER_DIR=C:\Users\Noval\.gemini\antigravity\scratch\android-runner
+cd /d "%RUNNER_DIR%"
 set BIN_DIR=%RUNNER_DIR%\bin
 set JAR_FILE=%RUNNER_DIR%\lib\android-all-10.jar
 set AGENT_JAR=%RUNNER_DIR%\lib\runner-agent.jar

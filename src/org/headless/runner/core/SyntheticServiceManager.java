@@ -628,6 +628,14 @@ public class SyntheticServiceManager {
                 android.media.AudioManager am = new android.media.AudioManager(context);
                 SERVICE_INSTANCES.put(name, am);
                 return am;
+            } else if (Context.SENSOR_SERVICE.equals(name) || "sensor".equals(name)) {
+                try {
+                    android.hardware.SystemSensorManager sm = new android.hardware.SystemSensorManager(context, Looper.getMainLooper());
+                    SERVICE_INSTANCES.put(name, sm);
+                    return sm;
+                } catch (Throwable t) {
+                    System.err.println("[-] Notice creating SensorManager: " + t.getMessage());
+                }
             } else if (Context.KEYGUARD_SERVICE.equals(name) || "keyguard".equals(name)) {
                 Constructor<android.app.KeyguardManager> ctor = android.app.KeyguardManager.class.getDeclaredConstructor(Context.class);
                 ctor.setAccessible(true);

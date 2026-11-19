@@ -1,6 +1,7 @@
 package org.headless.runner.ui;
 
 import android.app.Activity;
+import android.os.Binder;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -8,28 +9,22 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 /**
- * Generic engine helper that forces ViewPager (and ViewPager2) to populate
+ * Generic engine helper that forces ViewPager (and subclasses) to populate
  * their children in headless mode.
  *
- * In a real Android device, ViewPager.populate() is called from onMeasure()/
- * onLayout() which only runs during a real drawing pass. In our headless
- * in-process runner there is no drawing pass, so we must trigger it manually
- * after the activity's layout has settled.
+ * In a real Android device, ViewPager.populate() is triggered from onMeasure() /
+ * onLayout() and requires getWindowToken() != null. In headless mode with no
+ * display server, onMeasure/onLayout never fires and getWindowToken() can be null
+ * unless explicitly attached.
  *
- * This is 100% generic — it works for any app's ViewPager/CustomViewPager
- * subclass without hardcoding any app-specific class names.
+ * This implementation is 100% generic: walks the view tree, attaches any
+ * ViewPager to the window AttachInfo, sets layout flags, invokes populate(),
+ * falls back to instantiateItem() if needed, and flushes FragmentTransactions.
  */
 public class ViewPagerPopulator {
 
     private static final String TAG = "[ViewPagerPopulator]";
 
-    /**
-     * Walk the entire view tree of an activity, find every ViewPager subclass,
-     * and forcibly trigger populate() so fragments/views get instantiated.
-     *
-     * Call this after all Looper messages have drained (i.e., after the
-     * settle-poll loop in AppLauncher / ActivityStack.notifyStackChanged).
-     */
     public static void populateAll(Activity activity) {
         if (activity == null) return;
         android.view.Window window = activity.getWindow();
@@ -38,15 +33,8 @@ public class ViewPagerPopulator {
         if (decor == null) return;
 
         walkAndPopulate(activity, decor, 0);
-
-        // After populate() calls may have scheduled fragment transactions,
-        // drain the looper again and then flush pending fragment transactions.
         drainAndFlush(activity);
     }
-
-    // -------------------------------------------------------------------------
-    // Internal helpers
-    // -------------------------------------------------------------------------
 
     private static void walkAndPopulate(Activity activity, View view, int depth) {
         if (view == null) return;
@@ -63,7 +51,6 @@ public class ViewPagerPopulator {
         }
     }
 
-    /** True for any androidx.viewpager.widget.ViewPager (and subclasses). */
     private static boolean isViewPager(View view) {
         Class<?> cls = view.getClass();
         while (cls != null && cls != Object.class) {
@@ -78,14 +65,13 @@ public class ViewPagerPopulator {
     private static void populateViewPager(Activity activity, View pager) {
         String pagerClass = pager.getClass().getName();
         try {
-            // 1. Check if adapter is set and non-null
+            // 1. Check adapter
             Object adapter = getFieldValue(pager, "mAdapter");
             if (adapter == null) {
                 System.out.println("[!] " + TAG + " " + pagerClass + " has no adapter set — skipping.");
                 return;
             }
 
-            // 2. Check adapter count
             int count = 0;
             try {
                 Method getCount = adapter.getClass().getMethod("getCount");
@@ -94,20 +80,17 @@ public class ViewPagerPopulator {
                 System.err.println("[-] " + TAG + " Could not call getCount(): " + t.getMessage());
             }
             System.out.println("[*] " + TAG + " Found " + pagerClass + " with adapter=" +
-                    adapter.getClass().getSimpleName() + " count=" + count);
+                    adapter.getClass().getName() + " count=" + count);
 
             if (count == 0) {
                 System.out.println("[!] " + TAG + " Adapter reports 0 pages — nothing to populate.");
                 return;
             }
 
-            // 3. Simulate that a layout pass already happened.
-            //    ViewPager.populate() has this guard at the top:
-            //      if (mFirstLayout) { mCurItem = item; requestLayout(); return; }
-            //    In headless mode there's no drawing pass so mFirstLayout stays true
-            //    and populate() bails immediately without instantiating any items.
-            //    We set mFirstLayout=false and give the ViewPager fake dimensions so
-            //    populate() proceeds to call instantiateItem().
+            // 2. Ensure window attachment (ViewPager.populate line 74: if (getWindowToken() == null) return;)
+            ensureWindowAttached(activity, pager);
+
+            // 3. Simulate completed layout pass
             setFirstLayoutDone(pager);
 
             // 4. Force populate() via reflection
@@ -127,15 +110,38 @@ public class ViewPagerPopulator {
                 } catch (Throwable t) {
                     System.err.println("[-] " + TAG + " populate() threw: " +
                             t.getClass().getName() + ": " + t.getMessage());
-                    t.printStackTrace(System.err);
                     break;
                 }
             }
 
-            if (!populated) {
-                System.out.println("[*] " + TAG + " populate() not found — using manual instantiateItem fallback...");
+            // Flush pending fragment transactions scheduled during populate()
+            drainAndFlush(activity);
+
+            // 5. If child count is still 0, trigger manual instantiation
+            int currentChildren = ((ViewGroup) pager).getChildCount();
+            if (currentChildren == 0) {
+                System.out.println("[*] " + TAG + " Pager still has 0 children — invoking manual instantiateItem...");
                 manualInstantiatePages(activity, pager, adapter, count);
+                drainAndFlush(activity);
+                System.out.println("[+] " + TAG + " Post-manual children: " + ((ViewGroup) pager).getChildCount());
             }
+
+            // 6. Measure and layout pager and all its newly instantiated children
+            int pw = pager.getWidth() > 0 ? pager.getWidth() : 1082;
+            int ph = pager.getHeight() > 0 ? pager.getHeight() : 1920;
+            int wSpec = View.MeasureSpec.makeMeasureSpec(pw, View.MeasureSpec.EXACTLY);
+            int hSpec = View.MeasureSpec.makeMeasureSpec(ph, View.MeasureSpec.EXACTLY);
+            try {
+                pager.measure(wSpec, hSpec);
+                pager.layout(0, 0, pw, ph);
+                ViewGroup vg = (ViewGroup) pager;
+                for (int i = 0; i < vg.getChildCount(); i++) {
+                    View child = vg.getChildAt(i);
+                    child.measure(wSpec, hSpec);
+                    child.layout(0, 0, pw, ph);
+                }
+                System.out.println("[+] " + TAG + " Laid out " + vg.getChildCount() + " child(ren) to [" + pw + "x" + ph + "]");
+            } catch (Throwable ignored) {}
 
         } catch (Throwable t) {
             System.err.println("[-] " + TAG + " Unexpected error processing " + pagerClass + ": " +
@@ -144,41 +150,144 @@ public class ViewPagerPopulator {
         }
     }
 
-    /**
-     * Simulate that a layout pass has already occurred on this ViewPager.
-     * Sets mFirstLayout=false and injects a fake non-zero width so that
-     * ViewPager.populate() proceeds past its early-exit guard.
-     */
+    private static void ensureWindowAttached(Activity activity, View pager) {
+        try {
+            if (pager.getWindowToken() != null) {
+                System.out.println("[+] " + TAG + " Pager already has windowToken: " + pager.getWindowToken());
+                return;
+            }
+
+            android.view.Window win = activity.getWindow();
+            if (win == null) return;
+            View decor = win.getDecorView();
+            if (decor == null) return;
+
+            Field attachInfoField = View.class.getDeclaredField("mAttachInfo");
+            attachInfoField.setAccessible(true);
+            Object attachInfo = attachInfoField.get(decor);
+            if (attachInfo == null) {
+                org.headless.runner.core.ActivityStack.attachWindowIfNeeded(activity);
+                attachInfo = attachInfoField.get(decor);
+            }
+
+            if (attachInfo != null) {
+                // Ensure mWindowToken is set on attachInfo
+                try {
+                    Field wtField = attachInfo.getClass().getDeclaredField("mWindowToken");
+                    wtField.setAccessible(true);
+                    if (wtField.get(attachInfo) == null) {
+                        wtField.set(attachInfo, new Binder("window_token_fallback"));
+                    }
+                } catch (Throwable ignored) {}
+
+                // Dispatch attached to window on the pager
+                Method dispatch = View.class.getDeclaredMethod("dispatchAttachedToWindow", attachInfo.getClass(), int.class);
+                dispatch.setAccessible(true);
+                dispatch.invoke(pager, attachInfo, 0);
+                System.out.println("[+] " + TAG + " dispatchAttachedToWindow successfully attached Pager! windowToken=" + pager.getWindowToken());
+            }
+        } catch (Throwable t) {
+            System.err.println("[-] " + TAG + " ensureWindowAttached failed: " + t.getMessage());
+        }
+    }
+
     private static void setFirstLayoutDone(View pager) {
-        // Clear mFirstLayout (the main guard in populate())
         try {
             Field f = findField(pager.getClass(), "mFirstLayout");
             f.set(pager, false);
-            System.out.println("[+] " + TAG + " mFirstLayout=false (simulate layout pass).");
+            System.out.println("[+] " + TAG + " mFirstLayout=false.");
         } catch (Throwable t) {
             System.err.println("[-] " + TAG + " Could not set mFirstLayout: " + t.getMessage());
         }
 
-        // Give the pager a fake width if mWidth/mLeft/mRight are still 0
+        try {
+            Field mPopPending = findField(pager.getClass(), "mPopulatePending");
+            mPopPending.set(pager, false);
+        } catch (Throwable ignored) {}
+
         int w = pager.getWidth();
         if (w == 0) {
             try {
-                // android.view.View.mRight and mLeft determine getWidth()
                 Field mRight = findField(View.class, "mRight");
                 mRight.set(pager, 1082);
                 Field mBottom = findField(View.class, "mBottom");
                 mBottom.set(pager, 1920);
-                System.out.println("[+] " + TAG + " Injected fake dimensions: 1082x1920.");
+                System.out.println("[+] " + TAG + " Injected dimensions 1082x1920.");
             } catch (Throwable t) {
-                System.err.println("[-] " + TAG + " Could not inject fake dimensions: " + t.getMessage());
+                System.err.println("[-] " + TAG + " Could not inject dimensions: " + t.getMessage());
+            }
+        }
+    }
+
+    private static void manualInstantiatePages(Activity activity, View pager, Object adapter, int count) {
+        try {
+            int currentItem = 0;
+            try {
+                Object ci = getFieldValue(pager, "mCurItem");
+                if (ci instanceof Integer) currentItem = (int) ci;
+            } catch (Throwable ignored) {}
+
+            int offscreen = 1;
+            try {
+                Object limit = getFieldValue(pager, "mOffscreenPageLimit");
+                if (limit instanceof Integer) offscreen = (int) limit;
+            } catch (Throwable ignored) {}
+
+            int start = Math.max(0, currentItem - offscreen);
+            int end   = Math.min(count - 1, currentItem + offscreen);
+
+            callMethod(adapter, "startUpdate", new Class[]{ViewGroup.class}, new Object[]{pager});
+
+            for (int pos = start; pos <= end; pos++) {
+                System.out.println("[*] " + TAG + " instantiateItem(container, " + pos + ")...");
+                Object item = callMethodRet(adapter, "instantiateItem",
+                        new Class[]{ViewGroup.class, int.class}, new Object[]{pager, pos});
+                System.out.println("[+] " + TAG + " page " + pos + " instantiated: " + item);
+            }
+
+            callMethod(adapter, "finishUpdate", new Class[]{ViewGroup.class}, new Object[]{pager});
+
+        } catch (Throwable t) {
+            System.err.println("[-] " + TAG + " manualInstantiatePages failed: " + t.getMessage());
+        }
+    }
+
+    private static void drainAndFlush(Activity activity) {
+        try {
+            if (android.os.Looper.getMainLooper() != null) {
+                android.os.Looper.getMainLooper().getQueue().drainPendingMessages();
+            }
+        } catch (Throwable ignored) {}
+
+        if (activity instanceof androidx.fragment.app.FragmentActivity) {
+            try {
+                ((androidx.fragment.app.FragmentActivity) activity)
+                        .getSupportFragmentManager().executePendingTransactions();
+                System.out.println("[+] " + TAG + " executePendingTransactions() executed.");
+            } catch (Throwable t) {
+                System.err.println("[-] " + TAG + " executePendingTransactions failed: " + t.getMessage());
             }
         }
 
-        // Also set mScrollX=0 (should already be 0, but be explicit)
         try {
-            Field scrollX = findField(View.class, "mScrollX");
-            scrollX.set(pager, 0);
+            if (android.os.Looper.getMainLooper() != null) {
+                android.os.Looper.getMainLooper().getQueue().drainPendingMessages();
+            }
         } catch (Throwable ignored) {}
+    }
+
+    private static Object getFieldValue(Object obj, String fieldName) throws Exception {
+        Class<?> cls = obj.getClass();
+        while (cls != null) {
+            try {
+                Field f = cls.getDeclaredField(fieldName);
+                f.setAccessible(true);
+                return f.get(obj);
+            } catch (NoSuchFieldException e) {
+                cls = cls.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException("Field '" + fieldName + "' not found in " + obj.getClass().getName());
     }
 
     private static Field findField(Class<?> cls, String name) throws NoSuchFieldException {
@@ -195,92 +304,6 @@ public class ViewPagerPopulator {
         throw new NoSuchFieldException("Field '" + name + "' not found in " + cls.getName());
     }
 
-    /**
-     * Manual fallback: call adapter.startUpdate, instantiateItem for the first
-     * offscreen pages, then finishUpdate — mimics what ViewPager.populate() does
-     * for the case where populate() cannot be found via reflection.
-     */
-    private static void manualInstantiatePages(Activity activity, View pager, Object adapter, int count) {
-        try {
-            // Determine offscreen page limit (default = 1 on each side => pages 0..2)
-            int offscreen = 1;
-            try {
-                Object limit = getFieldValue(pager, "mOffscreenPageLimit");
-                if (limit instanceof Integer) offscreen = (int) limit;
-            } catch (Throwable ignored) {}
-
-            int currentItem = 0;
-            try {
-                Object ci = getFieldValue(pager, "mCurItem");
-                if (ci instanceof Integer) currentItem = (int) ci;
-            } catch (Throwable ignored) {}
-
-            int start = Math.max(0, currentItem - offscreen);
-            int end   = Math.min(count - 1, currentItem + offscreen);
-
-            // startUpdate(container)
-            callMethod(adapter, "startUpdate", new Class[]{ViewGroup.class}, new Object[]{pager});
-
-            for (int pos = start; pos <= end; pos++) {
-                System.out.println("[*] " + TAG + " instantiateItem(container, " + pos + ")...");
-                Object item = callMethodRet(adapter, "instantiateItem",
-                        new Class[]{ViewGroup.class, int.class}, new Object[]{pager, pos});
-                System.out.println("[+] " + TAG + " page " + pos + " instantiated: " + item);
-            }
-
-            // finishUpdate(container)
-            callMethod(adapter, "finishUpdate", new Class[]{ViewGroup.class}, new Object[]{pager});
-
-        } catch (Throwable t) {
-            System.err.println("[-] " + TAG + " manualInstantiatePages failed: " + t.getMessage());
-        }
-    }
-
-    private static void drainAndFlush(Activity activity) {
-        // Drain looper
-        try {
-            if (android.os.Looper.getMainLooper() != null) {
-                android.os.Looper.getMainLooper().getQueue().drainPendingMessages();
-            }
-        } catch (Throwable ignored) {}
-
-        // Execute pending fragment transactions (FragmentPagerAdapter schedules commits)
-        if (activity instanceof androidx.fragment.app.FragmentActivity) {
-            try {
-                ((androidx.fragment.app.FragmentActivity) activity)
-                        .getSupportFragmentManager().executePendingTransactions();
-                System.out.println("[+] " + TAG + " executePendingTransactions() completed.");
-            } catch (Throwable t) {
-                System.err.println("[-] " + TAG + " executePendingTransactions failed: " + t.getMessage());
-            }
-        }
-
-        // Drain looper again after FM commits
-        try {
-            if (android.os.Looper.getMainLooper() != null) {
-                android.os.Looper.getMainLooper().getQueue().drainPendingMessages();
-            }
-        } catch (Throwable ignored) {}
-    }
-
-    // -------------------------------------------------------------------------
-    // Reflection utilities
-    // -------------------------------------------------------------------------
-
-    private static Object getFieldValue(Object obj, String fieldName) throws Exception {
-        Class<?> cls = obj.getClass();
-        while (cls != null) {
-            try {
-                Field f = cls.getDeclaredField(fieldName);
-                f.setAccessible(true);
-                return f.get(obj);
-            } catch (NoSuchFieldException e) {
-                cls = cls.getSuperclass();
-            }
-        }
-        throw new NoSuchFieldException("Field '" + fieldName + "' not found in " + obj.getClass().getName());
-    }
-
     private static void callMethod(Object obj, String name, Class<?>[] params, Object[] args) {
         try {
             Class<?> cls = obj.getClass();
@@ -295,7 +318,9 @@ public class ViewPagerPopulator {
                 }
             }
         } catch (Throwable t) {
-            System.err.println("[-] " + TAG + " callMethod(" + name + ") failed: " + t.getMessage());
+            Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null) ? t.getCause() : t;
+            System.err.println("[-] " + TAG + " callMethod(" + name + ") failed: " + cause.getClass().getName() + ": " + cause.getMessage());
+            cause.printStackTrace(System.err);
         }
     }
 
@@ -312,7 +337,9 @@ public class ViewPagerPopulator {
                 }
             }
         } catch (Throwable t) {
-            System.err.println("[-] " + TAG + " callMethodRet(" + name + ") failed: " + t.getMessage());
+            Throwable cause = (t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null) ? t.getCause() : t;
+            System.err.println("[-] " + TAG + " callMethodRet(" + name + ") failed: " + cause.getClass().getName() + ": " + cause.getMessage());
+            cause.printStackTrace(System.err);
         }
         return null;
     }

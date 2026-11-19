@@ -1,0 +1,207 @@
+{
+  "activity": "com.reactnative.RnSDKActivityNoAuth",
+  "timestamp": 1795078630341,
+  "root": {
+      "type": "com.android.internal.policy.DecorView",
+      "id": "",
+      "text": "",
+      "bounds": [0, 0, 1080, 1920],
+      "width": 1080,
+      "height": 1920,
+      "visible": true,
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "children": [
+        {
+          "type": "android.widget.RelativeLayout",
+          "id": "",
+          "text": "",
+          "bounds": [0, 0, 1080, 1920],
+          "width": 1080,
+          "height": 1920,
+          "visible": true,
+          "clickable": false,
+          "enabled": true,
+          "focusable": false,
+          "children": [
+            {
+              "type": "androidx.appcompat.widget.FitWindowsLinearLayout",
+              "id": "action_bar_root",
+              "text": "",
+              "bounds": [-1, 0, 1081, 1920],
+              "width": 1082,
+              "height": 1920,
+              "visible": true,
+              "clickable": false,
+              "enabled": true,
+              "focusable": false,
+              "children": [
+                {
+                  "type": "androidx.appcompat.widget.ViewStubCompat",
+                  "id": "action_mode_bar_stub",
+                  "text": "",
+                  "bounds": [0, 0, 0, 0],
+                  "width": 0,
+                  "height": 0,
+                  "visible": false,
+                  "clickable": false,
+                  "enabled": true,
+                  "focusable": false,
+                  "children": []
+                },
+                {
+                  "type": "androidx.appcompat.widget.ContentFrameLayout",
+                  "id": "entry_16908290",
+                  "text": "",
+                  "bounds": [0, 0, 1082, 1920],
+                  "width": 1082,
+                  "height": 1920,
+                  "visible": true,
+                  "clickable": false,
+                  "enabled": true,
+                  "focusable": false,
+                  "children": [
+                    {
+                      "type": "com.facebook.react.ReactRootView",
+                      "id": "entry_21",
+                      "text": "",
+                      "bounds": [0, 0, 1082, 1920],
+                      "width": 1082,
+                      "height": 1920,
+                      "visible": true,
+                      "clickable": false,
+                      "enabled": true,
+                      "focusable": false,
+                      "children": [
+                        {
+                          "type": "android.widget.LinearLayout",
+                          "id": "",
+                          "text": "",
+                          "bounds": [0, 0, 1082, 1920],
+                          "width": 1082,
+                          "height": 1920,
+                          "visible": true,
+                          "clickable": false,
+                          "enabled": true,
+                          "focusable": false,
+                          "children": [
+                            {
+                              "type": "android.widget.LinearLayout",
+                              "id": "",
+                              "text": "",
+                              "bounds": [48, 80, 1034, 428],
+                              "width": 986,
+                              "height": 348,
+                              "visible": true,
+                              "clickable": false,
+                              "enabled": true,
+                              "focusable": false,
+                              "children": [
+                                {
+                                  "type": "android.view.View",
+                                  "id": "",
+                                  "text": "",
+                                  "bounds": [433, 40, 553, 160],
+                                  "width": 120,
+                                  "height": 120,
+                                  "visible": true,
+                                  "clickable": false,
+                                  "enabled": true,
+                                  "focusable": false,
+                                  "children": []
+                                },
+                                {
+                                  "type": "android.widget.TextView",
+                                  "id": "",
+                                  "text": "com.myairtelapp",
+                                  "bounds": [0, 184, 986, 232],
+                                  "width": 986,
+                                  "height": 48,
+                                  "visible": true,
+                                  "clickable": false,
+                                  "enabled": true,
+                                  "focusable": false,
+                                  "children": []
+                                },
+                                {
+                                  "type": "android.widget.TextView",
+                                  "id": "",
+                                  "text": "Sign in to continue",
+                                  "bounds": [469, 240, 517, 288],
+                                  "width": 48,
+                                  "height": 48,
+                                  "visible": true,
+                                  "clickable": false,
+                                  "enabled": true,
+                                  "focusable": false,
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "type": "android.widget.LinearLayout",
+                              "id": "",
+                              "text": "",
+                              "bounds": [48, 428, 1034, 920],
+                              "width": 986,
+                              "height": 492,
+                              "visible": true,
+                              "clickable": false,
+                              "enabled": true,
+                              "focusable": false,
+                              "children": [
+                                {
+                                  "type": "android.widget.TextView",
+                                  "id": "",
+                                  "text": "Mobile Number / User ID",
+                                  "bounds": [40, 40, 946, 88],
+                                  "width": 906,
+                                  "height": 48,
+                                  "visible": true,
+                                  "clickable": false,
+                                  "enabled": true,
+                                  "focusable": false,
+                                  "children": []
+                                },
+                                {
+                                  "type": "android.widget.EditText",
+                                  "id": "",
+                                  "text": "",
+                                  "bounds": [40, 104, 946, 310],
+                                  "width": 906,
+                                  "height": 206,
+                                  "visible": true,
+                                  "clickable": true,
+                                  "enabled": true,
+                                  "focusable": true,
+                                  "children": []
+                                },
+                                {
+                                  "type": "android.widget.Button",
+                                  "id": "",
+                                  "text": "GET OTP / CONTINUE",
+                                  "bounds": [40, 342, 946, 452],
+                                  "width": 906,
+                                  "height": 110,
+                                  "visible": true,
+                                  "clickable": true,
+                                  "enabled": true,
+                                  "focusable": true,
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+}

@@ -1,0 +1,3 @@
+fetch_timeout_in_seconds=60
+last_fetch_status=1
+minimum_fetch_interval_in_seconds=7200

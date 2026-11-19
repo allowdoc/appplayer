@@ -1,0 +1,9 @@
+core_usage_meta_data_sync_version=5947
+appVersion=5947
+user_session={"session_id":"3d5f7ac2-d29a-4925-a501-6fd4b3525074","start_time":"2026-11-19T08:57:04.948Z","source_array":[{}],"last_interaction_time":1795078624948}
+events_batch_number=36
+core_debugger_log_config={"logLevel":0,"isLoggingEnabled":false,"expiryTime":-1}
+core_device_unique_id=26b0e620-f28d-4741-a6af-0f8ae90f10ce
+APP_UUID=7e13057c-725c-49cf-a705-2fe30d5dc4fa
+core_feature_usage={"initialisationConfigSource":"source_code"}
+core_moengage_environment=DEFAULT

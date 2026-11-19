@@ -1,0 +1,100 @@
+{
+  "activity": "com.myairtelapp.home.views.activities.SplashScreenActivity",
+  "timestamp": 1795078627967,
+  "root": {
+      "type": "com.android.internal.policy.DecorView",
+      "id": "",
+      "text": "",
+      "bounds": [0, 0, 1080, 1920],
+      "width": 1080,
+      "height": 1920,
+      "visible": true,
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "children": [
+        {
+          "type": "android.widget.RelativeLayout",
+          "id": "",
+          "text": "",
+          "bounds": [0, 0, 1080, 1920],
+          "width": 1080,
+          "height": 1920,
+          "visible": true,
+          "clickable": false,
+          "enabled": true,
+          "focusable": false,
+          "children": [
+            {
+              "type": "androidx.appcompat.widget.FitWindowsLinearLayout",
+              "id": "action_bar_root",
+              "text": "",
+              "bounds": [-1, 0, 1081, 1920],
+              "width": 1082,
+              "height": 1920,
+              "visible": true,
+              "clickable": false,
+              "enabled": true,
+              "focusable": false,
+              "children": [
+                {
+                  "type": "androidx.appcompat.widget.ViewStubCompat",
+                  "id": "action_mode_bar_stub",
+                  "text": "",
+                  "bounds": [0, 0, 0, 0],
+                  "width": 0,
+                  "height": 0,
+                  "visible": false,
+                  "clickable": false,
+                  "enabled": true,
+                  "focusable": false,
+                  "children": []
+                },
+                {
+                  "type": "androidx.appcompat.widget.ContentFrameLayout",
+                  "id": "entry_16908290",
+                  "text": "",
+                  "bounds": [0, 0, 1082, 1920],
+                  "width": 1082,
+                  "height": 1920,
+                  "visible": true,
+                  "clickable": false,
+                  "enabled": true,
+                  "focusable": false,
+                  "children": [
+                    {
+                      "type": "android.widget.FrameLayout",
+                      "id": "mainLayout",
+                      "text": "",
+                      "bounds": [0, 0, 1082, 1920],
+                      "width": 1082,
+                      "height": 1920,
+                      "visible": true,
+                      "clickable": false,
+                      "enabled": true,
+                      "focusable": false,
+                      "children": [
+                        {
+                          "type": "androidx.appcompat.widget.AppCompatImageView",
+                          "id": "splashImage",
+                          "text": "",
+                          "bounds": [0, 0, 1082, 1920],
+                          "width": 1082,
+                          "height": 1920,
+                          "visible": true,
+                          "clickable": false,
+                          "enabled": true,
+                          "focusable": false,
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+}

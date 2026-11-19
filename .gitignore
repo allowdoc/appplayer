@@ -1,28 +1,25 @@
 # Large binaries and archives (GitHub hard limit 100MB)
 *.zip
+*.rar
 *.tar.gz
+*.7z
 *.apk
+*.bak
 lib/android-all-10.jar
 lib/*-framed.jar
 *.frames.*
-app.jar
-app.jar.bak
-app-patched.jar
+*.frames.tmp
+*.tmp
 
 # Build outputs
 bin/
 build/
 *.class
-sources.txt
 
-# Runtime logs, screenshots, and cache
+# Logs
 *.log
-data/
-*.png
-splash_oncreate.txt
+hs_err_pid*
 
-# Temporary and backup files
-scratch/
-backup*/
+# Temporary test runs
 test_out.jar
-Test*
+TestAbi*

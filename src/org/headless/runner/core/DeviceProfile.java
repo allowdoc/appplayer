@@ -74,6 +74,10 @@ public class DeviceProfile {
         // Clean SELinux & Non-Root indicators
         SystemProperties.set("ro.boot.selinux", "1");
         SystemProperties.set("ro.build.selinux", "1");
+        SystemProperties.set("ro.product.cpu.abi", "arm64-v8a");
+        SystemProperties.set("ro.product.cpu.abilist", "arm64-v8a,armeabi-v7a,armeabi");
+        SystemProperties.set("ro.product.cpu.abilist64", "arm64-v8a");
+        SystemProperties.set("ro.product.cpu.abilist32", "armeabi-v7a,armeabi");
         SystemProperties.set("persist.sys.timezone", "Asia/Kolkata");
         SystemProperties.set("persist.sys.locale", "en-IN");
 

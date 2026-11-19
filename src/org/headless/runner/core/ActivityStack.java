@@ -71,13 +71,16 @@ public class ActivityStack {
         } catch (Throwable ignored) {}
     }
 
+    private Activity mLastFinishedActivity;
+
     public Activity getActivityByToken(IBinder token) {
         if (token == null) return null;
         return mTokenMap.get(token);
     }
 
     public Activity getTopActivity() {
-        return mStack.peek();
+        Activity top = mStack.peek();
+        return (top != null) ? top : mLastFinishedActivity;
     }
 
     public Deque<Activity> getAllActivities() {
@@ -209,6 +212,9 @@ public class ActivityStack {
         }
 
         boolean wasTop = (mStack.peek() == activity);
+        if (wasTop) {
+            mLastFinishedActivity = activity;
+        }
         mStack.remove(activity);
         mTokenMap.values().removeIf(a -> a == activity);
 

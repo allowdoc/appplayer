@@ -434,10 +434,20 @@ public class AppLauncher {
                     }
                 }
 
-                // Drain Looper messages
-                System.out.println("[*] Draining and executing pending Looper event queue...");
+                // Attach window and drain Looper messages
+                System.out.println("[*] Attaching Activity Window and draining initial Looper queue...");
+                org.headless.runner.core.ActivityStack.attachWindowIfNeeded(activity);
                 int dispatched = Looper.getMainLooper().getQueue().drainPendingMessages();
                 System.out.println("[+] Processed " + dispatched + " pending Looper task(s) on main event loop.");
+
+                // Populate ViewPagers on initial activity
+                try {
+                    System.out.println("[*] [AppLauncher] Populating ViewPager child views on initial activity...");
+                    org.headless.runner.ui.ViewPagerPopulator.populateAll(activity);
+                    Looper.getMainLooper().getQueue().drainPendingMessages();
+                } catch (Throwable t) {
+                    System.err.println("[-] Notice populating ViewPager on initial activity: " + t.getMessage());
+                }
 
                 // Headless UI Tree Dump & Frame Capture
                 try {

@@ -1,0 +1,347 @@
+{
+  "activity": "me.tsukanov.counter.activities.MainActivity",
+  "timestamp": 1795237626499,
+  "root": {
+      "type": "com.android.internal.policy.DecorView",
+      "id": "",
+      "text": "",
+      "bounds": [0, 0, 1080, 1920],
+      "width": 1080,
+      "height": 1920,
+      "visible": true,
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "children": [
+        {
+          "type": "android.widget.LinearLayout",
+          "id": "",
+          "text": "",
+          "bounds": [0, 0, 1080, 1920],
+          "width": 1080,
+          "height": 1920,
+          "visible": true,
+          "clickable": false,
+          "enabled": true,
+          "focusable": false,
+          "children": [
+            {
+              "type": "android.view.ViewStub",
+              "id": "entry_16908692",
+              "text": "",
+              "bounds": [0, 0, 0, 0],
+              "width": 0,
+              "height": 0,
+              "visible": false,
+              "clickable": false,
+              "enabled": true,
+              "focusable": false,
+              "children": []
+            },
+            {
+              "type": "android.widget.FrameLayout",
+              "id": "",
+              "text": "",
+              "bounds": [0, 0, 1080, 1920],
+              "width": 1080,
+              "height": 1920,
+              "visible": true,
+              "clickable": false,
+              "enabled": true,
+              "focusable": false,
+              "children": [
+                {
+                  "type": "androidx.appcompat.widget.FitWindowsLinearLayout",
+                  "id": "action_bar_root",
+                  "text": "",
+                  "bounds": [0, 0, 1080, 1920],
+                  "width": 1080,
+                  "height": 1920,
+                  "visible": true,
+                  "clickable": false,
+                  "enabled": true,
+                  "focusable": false,
+                  "children": [
+                    {
+                      "type": "androidx.appcompat.widget.ViewStubCompat",
+                      "id": "abc_action_mode_bar",
+                      "text": "",
+                      "bounds": [0, 0, 0, 0],
+                      "width": 0,
+                      "height": 0,
+                      "visible": false,
+                      "clickable": false,
+                      "enabled": true,
+                      "focusable": false,
+                      "children": []
+                    },
+                    {
+                      "type": "androidx.appcompat.widget.ContentFrameLayout",
+                      "id": "entry_16908290",
+                      "text": "",
+                      "bounds": [0, 0, 1080, 1920],
+                      "width": 1080,
+                      "height": 1920,
+                      "visible": true,
+                      "clickable": false,
+                      "enabled": true,
+                      "focusable": false,
+                      "children": [
+                        {
+                          "type": "androidx.drawerlayout.widget.DrawerLayout",
+                          "id": "mainNavigationLayout",
+                          "text": "",
+                          "bounds": [0, 0, 1080, 1920],
+                          "width": 1080,
+                          "height": 1920,
+                          "visible": true,
+                          "clickable": false,
+                          "enabled": true,
+                          "focusable": true,
+                          "children": [
+                            {
+                              "type": "androidx.coordinatorlayout.widget.CoordinatorLayout",
+                              "id": "",
+                              "text": "",
+                              "bounds": [1080, 0, 1992, 1920],
+                              "width": 912,
+                              "height": 1920,
+                              "visible": false,
+                              "clickable": false,
+                              "enabled": true,
+                              "focusable": false,
+                              "children": [
+                                {
+                                  "type": "com.google.android.material.appbar.AppBarLayout",
+                                  "id": "",
+                                  "text": "",
+                                  "bounds": [0, 0, 912, 1920],
+                                  "width": 912,
+                                  "height": 1920,
+                                  "visible": true,
+                                  "clickable": false,
+                                  "enabled": true,
+                                  "focusable": false,
+                                  "children": [
+                                    {
+                                      "type": "com.google.android.material.appbar.MaterialToolbar",
+                                      "id": "mainToolbar",
+                                      "text": "",
+                                      "bounds": [0, 0, 607, 126],
+                                      "width": 607,
+                                      "height": 126,
+                                      "visible": true,
+                                      "clickable": false,
+                                      "enabled": true,
+                                      "focusable": false,
+                                      "children": [
+                                        {
+                                          "type": "w5",
+                                          "id": "",
+                                          "text": "První počítadlo",
+                                          "bounds": [42, 25, 565, 100],
+                                          "width": 523,
+                                          "height": 75,
+                                          "visible": true,
+                                          "clickable": false,
+                                          "enabled": true,
+                                          "focusable": false,
+                                          "children": []
+                                        },
+                                        {
+                                          "type": "androidx.appcompat.widget.ActionMenuView",
+                                          "id": "",
+                                          "text": "",
+                                          "bounds": [586, 0, 586, 126],
+                                          "width": 0,
+                                          "height": 126,
+                                          "visible": true,
+                                          "clickable": false,
+                                          "enabled": true,
+                                          "focusable": false,
+                                          "children": [
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "android.widget.FrameLayout",
+                                  "id": "mainContentFrame",
+                                  "text": "",
+                                  "bounds": [0, 0, 912, 1920],
+                                  "width": 912,
+                                  "height": 1920,
+                                  "visible": true,
+                                  "clickable": false,
+                                  "enabled": true,
+                                  "focusable": false,
+                                  "children": [
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "com.google.android.material.navigation.NavigationView",
+                              "id": "mainMenuFrame",
+                              "text": "",
+                              "bounds": [-912, 0, 0, 14337],
+                              "width": 912,
+                              "height": 14337,
+                              "visible": false,
+                              "clickable": false,
+                              "enabled": true,
+                              "focusable": false,
+                              "children": [
+                                {
+                                  "type": "com.google.android.material.internal.NavigationMenuView",
+                                  "id": "design_navigation_view",
+                                  "text": "",
+                                  "bounds": [0, 0, 912, 14337],
+                                  "width": 912,
+                                  "height": 14337,
+                                  "visible": true,
+                                  "clickable": false,
+                                  "enabled": true,
+                                  "focusable": true,
+                                  "children": [
+                                    {
+                                      "type": "android.widget.LinearLayout",
+                                      "id": "navigation_header_container",
+                                      "text": "",
+                                      "bounds": [0, 0, 912, 21],
+                                      "width": 912,
+                                      "height": 21,
+                                      "visible": true,
+                                      "clickable": false,
+                                      "enabled": true,
+                                      "focusable": false,
+                                      "children": [
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "android.widget.LinearLayout",
+                                  "id": "",
+                                  "text": "",
+                                  "bounds": [0, 0, 912, 14337],
+                                  "width": 912,
+                                  "height": 14337,
+                                  "visible": true,
+                                  "clickable": false,
+                                  "enabled": true,
+                                  "focusable": false,
+                                  "children": [
+                                    {
+                                      "type": "android.widget.LinearLayout",
+                                      "id": "add_counter",
+                                      "text": "",
+                                      "bounds": [0, 0, 912, 12801],
+                                      "width": 912,
+                                      "height": 12801,
+                                      "visible": true,
+                                      "clickable": true,
+                                      "enabled": true,
+                                      "focusable": true,
+                                      "children": [
+                                        {
+                                          "type": "r4",
+                                          "id": "",
+                                          "text": "",
+                                          "bounds": [0, 0, 0, 12801],
+                                          "width": 0,
+                                          "height": 12801,
+                                          "visible": true,
+                                          "clickable": false,
+                                          "enabled": true,
+                                          "focusable": false,
+                                          "children": []
+                                        },
+                                        {
+                                          "type": "kt",
+                                          "id": "",
+                                          "text": "",
+                                          "bounds": [0, 0, 912, 12801],
+                                          "width": 912,
+                                          "height": 12801,
+                                          "visible": true,
+                                          "clickable": false,
+                                          "enabled": true,
+                                          "focusable": false,
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "android.widget.ListView",
+                                      "id": "entry_16908298",
+                                      "text": "",
+                                      "bounds": [0, 12801, 1, 14337],
+                                      "width": 1,
+                                      "height": 1536,
+                                      "visible": true,
+                                      "clickable": true,
+                                      "enabled": true,
+                                      "focusable": true,
+                                      "children": [
+                                        {
+                                          "type": "android.widget.LinearLayout",
+                                          "id": "",
+                                          "text": "",
+                                          "bounds": [0, 0, 1, 2049],
+                                          "width": 1,
+                                          "height": 2049,
+                                          "visible": true,
+                                          "clickable": false,
+                                          "enabled": true,
+                                          "focusable": false,
+                                          "children": [
+                                            {
+                                              "type": "kt",
+                                              "id": "row_title",
+                                              "text": "První počítadlo",
+                                              "bounds": [0, 1014, 1, 1033],
+                                              "width": 1,
+                                              "height": 19,
+                                              "visible": true,
+                                              "clickable": false,
+                                              "enabled": true,
+                                              "focusable": false,
+                                              "children": []
+                                            },
+                                            {
+                                              "type": "kt",
+                                              "id": "row_count",
+                                              "text": "0",
+                                              "bounds": [1, 0, 2050, 2049],
+                                              "width": 2049,
+                                              "height": 2049,
+                                              "visible": true,
+                                              "clickable": false,
+                                              "enabled": true,
+                                              "focusable": false,
+                                              "children": []
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+}

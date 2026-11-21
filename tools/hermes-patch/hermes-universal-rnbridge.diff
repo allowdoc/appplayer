@@ -1,0 +1,258 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e4a5cb7..e2e64be 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -39,7 +39,7 @@ endif()
+ # location of build targets. This is needed when building the debugging symbols
+ # bundles for Apple platforms.
+ if (POLICY CMP0026)
+-  cmake_policy(SET CMP0026 OLD)
++  cmake_policy(SET CMP0026 NEW)
+ endif()
+ 
+ # Has to be set before `project` as per documentation
+diff --git a/lib/ConsoleHost/ConsoleHost.cpp b/lib/ConsoleHost/ConsoleHost.cpp
+index 2dc4361..ff52513 100644
+--- a/lib/ConsoleHost/ConsoleHost.cpp
++++ b/lib/ConsoleHost/ConsoleHost.cpp
+@@ -21,6 +21,10 @@
+ #include "hermes/VM/TimeLimitMonitor.h"
+ #include "hermes/VM/instrumentation/PerfEvents.h"
+ 
++#include <cstdio>
++#include <cstdlib>
++#include <string>
++
+ namespace hermes {
+ 
+ ConsoleHostContext::ConsoleHostContext(vm::Runtime &runtime) {
+@@ -125,6 +129,171 @@ loadSegment(void *ctx, vm::Runtime &runtime, vm::NativeArgs args) {
+   return HermesValue::encodeUndefinedValue();
+ }
+ 
++// ============================================================================
++// Universal React Native Bridge host functions (appplayer / "Android Wine").
++// These allow a pure-JS driver script to talk bidirectionally with the Java
++// Android runner over stdin/stdout NDJSON, and to execute a second HBC bundle
++// (the app's index.android.bundle) inside THIS SAME VM instance.
++// ============================================================================
++
++/// Read one UTF-8 line from stdin. Returns null on EOF.
++static vm::CallResult<vm::HermesValue>
++rnReadInbox(void *, vm::Runtime &runtime, vm::NativeArgs) {
++  using namespace hermes::vm;
++  std::string line;
++  int c;
++  bool eof = false;
++  while ((c = std::fgetc(stdin)) != EOF) {
++    if (c == '\n') {
++      break;
++    }
++    line.push_back(static_cast<char>(c));
++  }
++  if (c == EOF && line.empty()) {
++    eof = true;
++  }
++  if (eof) {
++    return HermesValue::encodeNullValue();
++  }
++  return StringPrimitive::createNoThrow(runtime, llvh::StringRef(line)).getHermesValue();
++}
++
++/// Write one UTF-8 line to stdout and flush immediately (NDJSON protocol).
++static vm::CallResult<vm::HermesValue>
++rnWriteOutbox(void *, vm::Runtime &runtime, vm::NativeArgs args) {
++  using namespace hermes::vm;
++  if (!args.getArg(0).isString()) {
++    return runtime.raiseTypeError("Outbox payload must be a string");
++  }
++  auto str = Handle<StringPrimitive>::vmcast(args.getArgHandle(0));
++  auto view = StringPrimitive::createStringView(runtime, str);
++  llvh::SmallVector<char16_t, 32> buf;
++  std::string out;
++  convertUTF16ToUTF8WithReplacements(out, view.getUTF16Ref(buf));
++  std::fputs(out.c_str(), stdout);
++  std::fputc('\n', stdout);
++  std::fflush(stdout);
++  return HermesValue::encodeUndefinedValue();
++}
++
++/// Blocking synchronous native call: writes "@@SYNC <req>" to stdout, then
++/// blocks until the Java side answers with exactly one reply line on stdin.
++static vm::CallResult<vm::HermesValue>
++rnSyncCall(void *, vm::Runtime &runtime, vm::NativeArgs args) {
++  using namespace hermes::vm;
++  if (!args.getArg(0).isString()) {
++    return runtime.raiseTypeError("Sync payload must be a string");
++  }
++  auto str = Handle<StringPrimitive>::vmcast(args.getArgHandle(0));
++  auto view = StringPrimitive::createStringView(runtime, str);
++  llvh::SmallVector<char16_t, 32> buf;
++  std::string req;
++  convertUTF16ToUTF8WithReplacements(req, view.getUTF16Ref(buf));
++  std::fputs("@@SYNC ", stdout);
++  std::fputs(req.c_str(), stdout);
++  std::fputc('\n', stdout);
++  std::fflush(stdout);
++  std::string line;
++  int c;
++  while ((c = std::fgetc(stdin)) != EOF) {
++    if (c == '\n') {
++      break;
++    }
++    line.push_back(static_cast<char>(c));
++  }
++  return StringPrimitive::createNoThrow(runtime, llvh::StringRef(line)).getHermesValue();
++}
++
++/// Read a whole file as a UTF-8 string (small text files: RN config etc.).
++static vm::CallResult<vm::HermesValue>
++rnReadFile(void *, vm::Runtime &runtime, vm::NativeArgs args) {
++  using namespace hermes::vm;
++  if (!args.getArg(0).isString()) {
++    return runtime.raiseTypeError("Filename argument must be a string");
++  }
++  auto str = Handle<StringPrimitive>::vmcast(args.getArgHandle(0));
++  auto view = StringPrimitive::createStringView(runtime, str);
++  llvh::SmallVector<char16_t, 32> buf;
++  std::string fileName;
++  convertUTF16ToUTF8WithReplacements(fileName, view.getUTF16Ref(buf));
++
++  auto fileBufRes = llvh::MemoryBuffer::getFile(llvh::Twine(fileName));
++  if (!fileBufRes) {
++    return HermesValue::encodeNullValue();
++  }
++  llvh::StringRef data = (*fileBufRes)->getBuffer();
++  auto created = StringPrimitive::createNoThrow(runtime, data);
++  return created.getHermesValue();
++}
++
++/// Execute an HBC bytecode file inside THIS SAME runtime instance. This is how
++/// the app's index.android.bundle (Hermes v96) is loaded after the driver has
++/// installed the RN bridge globals.
++static vm::CallResult<vm::HermesValue>
++rnExecuteHBC(void *, vm::Runtime &runtime, vm::NativeArgs args) {
++  using namespace hermes::vm;
++  if (!args.getArg(0).isString()) {
++    return runtime.raiseTypeError("Filename argument must be a string");
++  }
++  auto str = Handle<StringPrimitive>::vmcast(args.getArgHandle(0));
++  auto view = StringPrimitive::createStringView(runtime, str);
++  llvh::SmallVector<char16_t, 32> buf;
++  std::string fileName;
++  convertUTF16ToUTF8WithReplacements(fileName, view.getUTF16Ref(buf));
++
++  auto fileBufRes = llvh::MemoryBuffer::getFile(llvh::Twine(fileName));
++  if (!fileBufRes) {
++    std::string msg = "Failed to open HBC file: " + fileName;
++    return runtime.raiseTypeError(TwineChar16(msg));
++  }
++
++  auto ret = hbc::BCProviderFromBuffer::createBCProviderFromBuffer(
++      std::make_unique<OwnedMemoryBuffer>(std::move(*fileBufRes)));
++  if (!ret.first) {
++    return runtime.raiseTypeError("Error deserializing app bundle bytecode");
++  }
++
++  vm::GCScopeMarkerRAII marker{runtime};
++  vm::RuntimeModuleFlags flags;
++  flags.persistent = true;
++
++  if (LLVM_UNLIKELY(
++          runtime.runBytecode(
++              std::move(ret.first),
++              flags,
++              llvh::StringRef(fileName),
++              vm::Runtime::makeNullHandle<vm::Environment>()) ==
++          ExecutionStatus::EXCEPTION)) {
++    llvh::outs().flush();
++    runtime.printException(
++        llvh::outs(), runtime.makeHandle(runtime.getThrownValue()));
++    llvh::outs().flush();
++    return HermesValue::encodeNullValue();
++  }
++  llvh::outs().flush();
++  return HermesValue::encodeUndefinedValue();
++}
++
++/// Get an environment variable as a string, or null.
++static vm::CallResult<vm::HermesValue>
++rnGetEnv(void *, vm::Runtime &runtime, vm::NativeArgs args) {
++  using namespace hermes::vm;
++  if (!args.getArg(0).isString()) {
++    return runtime.raiseTypeError("Env name argument must be a string");
++  }
++  auto str = Handle<StringPrimitive>::vmcast(args.getArgHandle(0));
++  auto view = StringPrimitive::createStringView(runtime, str);
++  llvh::SmallVector<char16_t, 32> buf;
++  std::string name;
++  convertUTF16ToUTF8WithReplacements(name, view.getUTF16Ref(buf));
++
++  const char *val = std::getenv(name.c_str());
++  if (!val) {
++    return HermesValue::encodeNullValue();
++  }
++  return StringPrimitive::createNoThrow(runtime, llvh::StringRef(val)).getHermesValue();
++}
++
+ static vm::CallResult<vm::HermesValue>
+ setTimeout(void *ctx, vm::Runtime &runtime, vm::NativeArgs args) {
+   ConsoleHostContext *consoleHost = (ConsoleHostContext *)ctx;
+@@ -226,6 +395,57 @@ void installConsoleBindings(
+       setTimeout,
+       &ctx,
+       1);
++
++  // ---- Universal React Native Bridge (appplayer) ----
++  // Always installed; harmless when unused by plain CLI scripts.
++  defineGlobalFunc(
++      runtime
++          .ignoreAllocationFailure(runtime.getIdentifierTable().getSymbolHandle(
++              runtime, llvh::createASCIIRef("__rnReadInbox")))
++          .get(),
++      rnReadInbox,
++      nullptr,
++      0);
++  defineGlobalFunc(
++      runtime
++          .ignoreAllocationFailure(runtime.getIdentifierTable().getSymbolHandle(
++              runtime, llvh::createASCIIRef("__rnWriteOutbox")))
++          .get(),
++      rnWriteOutbox,
++      nullptr,
++      1);
++  defineGlobalFunc(
++      runtime
++          .ignoreAllocationFailure(runtime.getIdentifierTable().getSymbolHandle(
++              runtime, llvh::createASCIIRef("__rnSyncCall")))
++          .get(),
++      rnSyncCall,
++      nullptr,
++      1);
++  defineGlobalFunc(
++      runtime
++          .ignoreAllocationFailure(runtime.getIdentifierTable().getSymbolHandle(
++              runtime, llvh::createASCIIRef("__rnReadFile")))
++          .get(),
++      rnReadFile,
++      nullptr,
++      1);
++  defineGlobalFunc(
++      runtime
++          .ignoreAllocationFailure(runtime.getIdentifierTable().getSymbolHandle(
++              runtime, llvh::createASCIIRef("__rnExecuteHBC")))
++          .get(),
++      rnExecuteHBC,
++      nullptr,
++      1);
++  defineGlobalFunc(
++      runtime
++          .ignoreAllocationFailure(runtime.getIdentifierTable().getSymbolHandle(
++              runtime, llvh::createASCIIRef("__rnGetEnv")))
++          .get(),
++      rnGetEnv,
++      nullptr,
++      1);
+ }
+ 
+ // If a function body might throw C++ exceptions other than

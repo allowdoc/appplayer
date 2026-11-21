@@ -1,0 +1,17 @@
+-XX:+UnlockDiagnosticVMOptions
+-XX:-BytecodeVerificationLocal
+-XX:-BytecodeVerificationRemote
+-XX:+UseSerialGC
+-XX:TieredStopAtLevel=1
+-Xss4m
+-XX:MaxMetaspaceSize=512m
+-XX:ReservedCodeCacheSize=64m
+-javaagent:lib/runner-agent.jar
+"-Djava.library.path=C:/Users/Noval/Downloads/appoo/native/win-x86_64"
+"-Dheadless.runner.dir=C:/Users/Noval/Downloads/appoo/."
+"-Dheadless.runner.apk=C:/Users/Noval/Downloads/appoo/app-release.apk"
+-cp
+"bin;C:/Users/Noval/Downloads/appoo/lib/runner-agent.jar;C:/Users/Noval/Downloads/appoo/yoga-native-restored.jar;C:/Users/Noval/Downloads/appoo/lib/android-all-10-framed.jar;C:/Users/Noval/Downloads/appoo/lib/sqlite-jdbc.jar;C:/Users/Noval/Downloads/appoo/lib/dexlib2-2.5.2.jar;C:/Users/Noval/Downloads/appoo/lib/guava-27.1-android.jar;C:/Users/Noval/Downloads/appoo/lib/asm-9.6.jar;C:/Users/Noval/Downloads/appoo/lib/asm-commons-9.6.jar;C:/Users/Noval/Downloads/appoo/app-release.apk;C:/Users/Noval/Downloads/appoo/lib/kotlin-stdlib-2.1.20.jar;C:/Users/Noval/Downloads/appoo/lib/kotlin-reflect-2.1.20.jar;C:/Users/Noval/Downloads/appoo/app-patched.jar;C:/Users/Noval/Downloads/appoo/lib/skija-shared-0.143.18.jar;C:/Users/Noval/Downloads/appoo/lib/types-0.2.0.jar;C:/Users/Noval/Downloads/appoo/lib/skija-windows-x64-0.143.18.jar;C:/Users/Noval/Downloads/appoo/lib/skija-linux-x64-0.143.18.jar"
+org.headless.runner.AppLauncher
+"C:/Users/Noval/Downloads/appoo/app-release.apk"
+--ui

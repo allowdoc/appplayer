@@ -1,0 +1,1 @@
+apkSize=39423313;compat=2

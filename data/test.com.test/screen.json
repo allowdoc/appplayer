@@ -1,0 +1,114 @@
+{
+  "activity": "test.com.test.MainActivity",
+  "timestamp": 1795237889406,
+  "root": {
+      "type": "com.android.internal.policy.DecorView",
+      "id": "",
+      "text": "",
+      "bounds": [0, 0, 1080, 1920],
+      "width": 1080,
+      "height": 1920,
+      "visible": true,
+      "clickable": false,
+      "enabled": true,
+      "focusable": false,
+      "children": [
+        {
+          "type": "android.widget.LinearLayout",
+          "id": "",
+          "text": "",
+          "bounds": [0, 0, 1080, 1920],
+          "width": 1080,
+          "height": 1920,
+          "visible": true,
+          "clickable": false,
+          "enabled": true,
+          "focusable": false,
+          "children": [
+            {
+              "type": "android.view.ViewStub",
+              "id": "entry_16908692",
+              "text": "",
+              "bounds": [0, 0, 0, 0],
+              "width": 0,
+              "height": 0,
+              "visible": false,
+              "clickable": false,
+              "enabled": true,
+              "focusable": false,
+              "children": []
+            },
+            {
+              "type": "android.widget.FrameLayout",
+              "id": "",
+              "text": "",
+              "bounds": [0, 0, 1080, 1920],
+              "width": 1080,
+              "height": 1920,
+              "visible": true,
+              "clickable": false,
+              "enabled": true,
+              "focusable": false,
+              "children": [
+                {
+                  "type": "androidx.appcompat.widget.FitWindowsLinearLayout",
+                  "id": "action_bar_root",
+                  "text": "",
+                  "bounds": [0, 0, 1080, 1920],
+                  "width": 1080,
+                  "height": 1920,
+                  "visible": true,
+                  "clickable": false,
+                  "enabled": true,
+                  "focusable": false,
+                  "children": [
+                    {
+                      "type": "androidx.appcompat.widget.ViewStubCompat",
+                      "id": "abc_action_mode_bar",
+                      "text": "",
+                      "bounds": [0, 0, 0, 0],
+                      "width": 0,
+                      "height": 0,
+                      "visible": false,
+                      "clickable": false,
+                      "enabled": true,
+                      "focusable": false,
+                      "children": []
+                    },
+                    {
+                      "type": "androidx.appcompat.widget.ContentFrameLayout",
+                      "id": "entry_16908290",
+                      "text": "",
+                      "bounds": [0, 0, 1080, 1920],
+                      "width": 1080,
+                      "height": 1920,
+                      "visible": true,
+                      "clickable": false,
+                      "enabled": true,
+                      "focusable": false,
+                      "children": [
+                        {
+                          "type": "com.facebook.react.ReactRootView",
+                          "id": "",
+                          "text": "",
+                          "bounds": [0, 0, 1080, 1920],
+                          "width": 1080,
+                          "height": 1920,
+                          "visible": true,
+                          "clickable": false,
+                          "enabled": true,
+                          "focusable": false,
+                          "children": [
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+}
